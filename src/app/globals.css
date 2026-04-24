@@ -1,26 +1,121 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --color-primary: #0058bc;
+  --color-primary-fixed: #d8e2ff;
+  --color-primary-container: #0070eb;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #fefcff;
+  --color-secondary: #006875;
+  --color-secondary-fixed: #9cf0ff;
+  --color-secondary-container: #00e3fd;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-fixed: #001f24;
+  --color-tertiary: #7000ff;
+  --color-tertiary-fixed: #e9ddff;
+  --color-tertiary-container: #874cff;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+  --color-surface: #f7f9fb;
+  --color-surface-dim: #d8dadc;
+  --color-surface-bright: #f7f9fb;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f6;
+  --color-surface-container: #eceef0;
+  --color-surface-container-high: #e6e8ea;
+  --color-surface-container-highest: #e0e3e5;
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #414755;
+  --color-outline: #717786;
+  --color-outline-variant: #c1c6d7;
+  --color-background: #f7f9fb;
+  --color-on-background: #191c1e;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-headline-xl: "Manrope", sans-serif;
+  --font-headline-lg: "Manrope", sans-serif;
+  --font-headline-md: "Manrope", sans-serif;
+  --font-body-lg: "Inter", sans-serif;
+  --font-body-md: "Inter", sans-serif;
+  --font-body-sm: "Inter", sans-serif;
+  --font-label-caps: "Inter", sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-background);
+  margin: 0;
+}
+
+/* 玻璃擬態容器 */
+.glass-vessel {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 10px 40px rgba(0, 88, 188, 0.06);
+}
+
+/* 液態背景 */
+.liquid-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  overflow: hidden;
+  background: var(--color-background);
+}
+
+/* 背景裝飾球 */
+.blob {
+  position: absolute;
+  filter: blur(80px);
+  opacity: 0.55;
+  border-radius: 50%;
+}
+
+/* 清潔選單樣式 */
+.clean-select {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  background-color: rgba(255, 255, 255, 0.4) !important;
+  transition: all 0.3s ease;
+  outline: none !important;
+  cursor: pointer;
+}
+
+.clean-select:focus {
+  background-color: white !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 4px rgba(0, 88, 188, 0.1) !important;
+}
+
+/* 動畫效果 */
+.fade-enter {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Material Symbols 字體修正 */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
 }
