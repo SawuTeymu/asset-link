@@ -1,9 +1,8 @@
 /**
  * ==========================================
  * 檔案：src/lib/constants.ts
- * 移植自：config.js (Asset-Link 全域配置)
- * 狀態：V0.0 旗艦不刪減完全體 (115年度合約對沖版)
- * 職責：集中管理行政白名單、115合約費率、外部系統物理 ID
+ * 狀態：V0.2 物理瘦身版 (移除 GAS 歷史遺跡)
+ * 職責：集中管理行政白名單、115合約費率、管理員登入密碼
  * ==========================================
  */
 
@@ -17,23 +16,23 @@ export const AUTHORIZED_ADMIN_EMAILS = [
   "admin@cmuh.org.tw"
 ];
 
-// 🔄 數據大一統引擎：外部系統物理 ID (對沖目標)
-export const EXTERNAL_IDS = {
-  WEBHIS: "1fZzc_frtVMFU27VOEx22EWlTZJ2GIgQP-QIgElP5fGc",
-  VANS: "17mvVOE43bRXaam8E5G0AN_bT2PKU9NJ93iq5KMXFBI8"
+// 🔐 管理端登入特權密碼
+export const ADMIN_CREDENTIALS = {
+  uid: "020807",
+  password: "r4r8dWJSP5Z"
 };
 
 // 💰 115 年度維護合約定價基準 (NSR 計價核心)
 export const NSR_PRICING_V115 = {
   "CAT 6A": {
-    "NORMAL": [4400, 4300, 4200], // [1-4點, 5-8點, 9點以上]
-    "ADDON":  [5700, 5600, 5500]  // [1-4點, 5-8點, 9點以上]
+    "NORMAL": [4400, 4300, 4200], 
+    "ADDON":  [5700, 5600, 5500]  
   },
   "CAT 6": {
     "NORMAL": [3600, 3500, 3400],
     "ADDON":  [4800, 4700, 4500]
   },
-  "EXTRA_PANEL": 1000 // 面板加購固定費用
+  "EXTRA_PANEL": 1000
 };
 
 // 📱 UI 行政窄化配置

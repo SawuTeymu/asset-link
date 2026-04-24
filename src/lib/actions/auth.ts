@@ -1,38 +1,48 @@
 "use server";
 
 import { supabase } from "../supabase";
-import { AUTHORIZED_ADMIN_EMAILS, SYSTEM_SECRET, SYSTEM_VERSION } from "../constants";
+import { AUTHORIZED_ADMIN_EMAILS, SYSTEM_SECRET, ADMIN_CREDENTIALS } from "../constants";
 import { createHash } from "crypto";
 
 /**
  * ==========================================
  * 檔案：src/lib/actions/auth.ts
- * 狀態：V280.1 修正版 (解決 Server Action 必修 async 問題)
- * 移植自：auth_manager.js (Asset-Link 安全中心)
- * 物理職責：身分對校、SSO 跳轉邏輯、數位憑證生成、XSS 安全清洗、全自動操作審計日誌
+ * 狀態：V280.2 帳密雙驗證升級版
+ * 物理職責：身分對校、密碼驗證、數位憑證生成、XSS 安全清洗、全自動操作審計日誌
  * ==========================================
  */
 
 /**
- * 🚀 1. 管理者 SSO 物理驗證 (verifyAdminSSO)
+ * 🚀 1. 管理者 SSO 物理驗證 (verifyAdminAccess)
+ * 新增了 password 參數，確保只有帳號與密碼完全吻合時才放行
  */
-export async function verifyAdminAccess(email: string) {
+export async function verifyAdminAccess(email: string, password?: string) {
   const userEmail = email.toLowerCase().trim();
   
   if (!userEmail) {
     return { 
       success: false, 
-      msg: "⚠️ 安全警報：無法偵測您的身分標記。請確保已登入授權帳號。" 
+      msg: "⚠️ 安全警報：無法偵測您的身分標記。請確保已輸入帳號。" 
     };
   }
 
-  // 權限對沖：比對白名單
+  // 物理規則：密碼阻斷驗證 (對沖 constants.ts 內的 ADMIN_CREDENTIALS)
+  if (password !== ADMIN_CREDENTIALS.password) {
+    await logAction("UNAUTHORIZED", `密碼驗證失敗：${userEmail}`);
+    return { 
+      success: false, 
+      authorized: false,
+      msg: "🚫 存取拒絕：管理密碼不正確。" 
+    };
+  }
+
+  // 權限對沖：比對 Email 白名單 或 特權 UID
   const isAdmin = AUTHORIZED_ADMIN_EMAILS.some(
     (e) => e.toLowerCase().trim() === userEmail
   );
 
-  if (isAdmin) {
-    await logAction(userEmail, "管理者 SSO 原生身分登入成功");
+  if (isAdmin || userEmail === ADMIN_CREDENTIALS.uid) {
+    await logAction(userEmail, "管理者帳號與密碼雙重驗證登入成功");
     return { 
       success: true, 
       url: "/admin",
@@ -53,13 +63,9 @@ export async function verifyAdminAccess(email: string) {
  */
 export async function generateSecureToken(identity: string): Promise<string> {
   if (!identity) return "";
-
-  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, ''); // yyyyMMdd
+  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
   const rawStr = identity + dateStr + SYSTEM_SECRET;
-  
-  // 執行物理雜湊演算
   const hash = createHash("sha256").update(rawStr).digest("hex");
-  
   return hash.substring(0, 16);
 }
 
@@ -68,15 +74,14 @@ export async function generateSecureToken(identity: string): Promise<string> {
  */
 export async function logAction(user: string, action: string) {
   try {
-    // 物理校準：呼叫非同步清洗函式
     const sanitizedUser = await sanitize(user);
     const sanitizedAction = await sanitize(action);
 
     const { error } = await supabase.from("system_logs").insert([
       {
-        operator: sanitizedUser,       // 操作身分
-        action: sanitizedAction,       // 執行動作
-        system_version: SYSTEM_VERSION, // 系統版本
+        operator: sanitizedUser,
+        action: sanitizedAction,
+        system_version: "Asset-Link V0.0 (Flagship Production)",
       }
     ]);
 
@@ -87,14 +92,11 @@ export async function logAction(user: string, action: string) {
 }
 
 /**
- * 🚀 4. 資料安全清洗工具 (_sanitizeInput)
- * ⚠️ 關鍵修正：Server Action 檔案中匯出的函式必須為 async
+ * 🚀 4. 資料安全清洗工具
  */
 export async function sanitize(input: string): Promise<string> {
   if (input === null || input === undefined) return "";
   const str = typeof input !== 'string' ? String(input) : input;
-  
-  // 物理清洗：移除標籤與角括號，保留行政專用符號 # :
   return str
     .replace(/<[^>]*>?/gm, "")
     .replace(/[<>]/g, "")
@@ -102,12 +104,12 @@ export async function sanitize(input: string): Promise<string> {
 }
 
 /**
- * 🚀 5. 內部權限攔截守衛 (原 _verifyIdentity)
+ * 🚀 5. 內部權限攔截守衛
  */
 export async function verifyServerSideIdentity(email: string) {
   const isAdmin = AUTHORIZED_ADMIN_EMAILS.some(
     (e) => e.toLowerCase().trim() === email.toLowerCase().trim()
-  );
+  ) || email === ADMIN_CREDENTIALS.uid;
   
   if (!isAdmin) {
     throw new Error(`🚫 權限不足：帳號 [${email}] 嘗試執行未授權的管理指令。`);
@@ -115,10 +117,3 @@ export async function verifyServerSideIdentity(email: string) {
   
   return true;
 }
-
-/**
- * 🔍 物理規則證明 (Physical Laws)：
- * 1. 修正了 sanitize 函式的同步定義錯誤，滿足 Next.js 編譯器要求。
- * 2. logAction 內部同步更新為 await 模式，確保寫入資料庫前的數據已完成清洗。
- * 3. 100% 保持行政窄化規則（姓名#分機）不受 XSS 清洗破壞。
- */
