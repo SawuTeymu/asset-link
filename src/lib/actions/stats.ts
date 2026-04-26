@@ -6,7 +6,7 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/stats.ts
- * 狀態：最終嚴格校準版 (請確保貼入 stats.ts)
+ * 狀態：最終嚴格校準版 (解除 .limit(10) 物理封印)
  * 物理職責：處理大數據網段分析、儀表板統計與 VANS 資安偏差偵測。
  * ==========================================
  */
@@ -104,11 +104,11 @@ export async function getIpUsageStats() {
 export async function getHistoryRecords() {
   noStore();
   try {
+    // 🚀 物理修復：移除 .limit(10)，釋放全量數據傳輸通道供 Admin 前端分頁器使用
     const { data, error } = await supabase
       .from("historical_assets")
       .select("*")
-      .order("數據匯入時間", { ascending: false })
-      .limit(10);
+      .order("數據匯入時間", { ascending: false });
 
     if (error) throw error;
 
@@ -129,7 +129,7 @@ export async function getHistoryRecords() {
     }));
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("【最近紀錄讀取失敗】:", errorMsg);
+    console.error("【歷史紀錄讀取失敗】:", errorMsg);
     return [];
   }
 }
