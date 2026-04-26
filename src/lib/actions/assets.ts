@@ -7,17 +7,69 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V5.9 旗艦完全體 (解決 TS no-explicit-any 報警)
+ * 狀態：V6.0 旗艦完全體 (修復 Vercel 編譯中斷)
  * 物理職責：
- * 1. 補齊 approveAsset 的 6 個引數 (包含 mac1, mac2)。
- * 2. 負責 ERI 資產的核發 (遷移至 historical_assets) 與退回。
- * 3. 提供 IP 衝突實時掃描與 VDS 自動流水號演算。
- * 4. 整合內部快速配發 (submitInternalIssue)，並植入強型別消除 any。
+ * 1. 補齊 submitAssetBatch 讓廠商端 (keyin) 能夠正常批次寫入資料。
+ * 2. 補齊 approveAsset 的 6 個引數 (包含 mac1, mac2)。
+ * 3. 負責 ERI 資產的核發 (遷移至 historical_assets) 與退回。
+ * 4. 提供 IP 衝突實時掃描與 VDS 自動流水號演算。
+ * 5. 整合內部快速配發 (submitInternalIssue)，並植入強型別消除 any。
  * ==========================================
  */
 
 /**
- * 🚀 1. 獲取待核定案件清單
+ * 🚀 0. 定義廠商預約載荷強型別 (消除 any，防堵編譯錯誤)
+ */
+export interface VendorSubmitPayload {
+  form_id: string;
+  install_date: string;
+  area: string;
+  floor: string;
+  unit: string;
+  applicant: string;
+  model: string;
+  sn: string;
+  mac1: string;
+  mac2: string;
+  remark: string;
+  vendor: string;
+  status: string;
+}
+
+/**
+ * 🚀 1. 執行廠商預約批次入庫 (供 keyin/page.tsx 呼叫)
+ */
+export async function submitAssetBatch(batchData: VendorSubmitPayload[]) {
+  // 物理對位：將前端傳來的英文屬性精準映射為 Supabase 繁體中文欄位
+  const insertData = batchData.map(d => ({
+    案件編號: d.form_id,
+    裝機日期: d.install_date,
+    院區: d.area,
+    樓層: d.floor,
+    使用單位: d.unit,
+    姓名分機: d.applicant,
+    品牌型號: d.model,
+    // 物理防呆：若廠商未填序號，系統先自動給予亂數暫存，防撞唯一鍵
+    產品序號: d.sn || `SN-AUTO-${Math.floor(Math.random() * 100000)}`, 
+    主要mac: d.mac1,
+    無線mac: d.mac2,
+    備註: d.remark,
+    來源廠商: d.vendor,
+    狀態: d.status
+  }));
+
+  const { error } = await supabase.from("assets").insert(insertData);
+  
+  if (error) throw new Error("廠商預約資料批次寫入失敗: " + error.message);
+
+  // 寫入系統安全日誌
+  await logAction("VENDOR_KEYIN", `廠商 [${batchData[0]?.vendor}] 批次提交 ${batchData.length} 筆預約單 (${batchData[0]?.form_id})`);
+  
+  return { success: true };
+}
+
+/**
+ * 🚀 2. 獲取待核定案件清單
  */
 export async function getAdminPendingData() {
   noStore();
@@ -51,7 +103,7 @@ export async function getAdminPendingData() {
 }
 
 /**
- * 🚀 2. 實時 IP 衝突對沖掃描
+ * 🚀 3. 實時 IP 衝突對沖掃描
  */
 export async function checkIpConflict(ip: string, isReplace: boolean) {
   noStore();
@@ -75,7 +127,7 @@ export async function checkIpConflict(ip: string, isReplace: boolean) {
 }
 
 /**
- * 🚀 3. 執行資產核定與物理遷移 (接收 6 個引數)
+ * 🚀 4. 執行資產核定與物理遷移 (接收 6 個引數)
  */
 export async function approveAsset(
   sn: string, 
@@ -148,7 +200,7 @@ export async function approveAsset(
 }
 
 /**
- * 🚀 4. 執行案件退回
+ * 🚀 5. 執行案件退回
  */
 export async function rejectAsset(sn: string, reason: string) {
   const { error } = await supabase
@@ -166,7 +218,7 @@ export async function rejectAsset(sn: string, reason: string) {
 }
 
 /**
- * 🚀 5. 自動獲取設備流水號
+ * 🚀 6. 自動獲取設備流水號
  */
 export async function getNextSequence(prefix: string) {
   noStore();
@@ -180,7 +232,7 @@ export async function getNextSequence(prefix: string) {
 }
 
 /**
- * 🚀 6. 定義內部配發資料封裝型別 (消除 any)
+ * 🚀 7. 定義內部配發資料封裝型別 (消除 any)
  */
 export interface InternalIssuePayload {
   installDate: string;
@@ -199,7 +251,7 @@ export interface InternalIssuePayload {
 }
 
 /**
- * 🚀 7. 內部緊急配發通道入庫 (供 internal/page.tsx 呼叫)
+ * 🚀 8. 內部緊急配發通道入庫 (供 internal/page.tsx 呼叫)
  */
 export async function submitInternalIssue(pkg: InternalIssuePayload) {
   const { error } = await supabase.from("assets").insert([{
