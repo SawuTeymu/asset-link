@@ -8,15 +8,13 @@ import { formatFloor, formatMAC } from "@/lib/logic/formatters";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V4.1 旗艦不刪減完全體 (全功能整合 + 嚴格型別修復)
+ * 狀態：V4.3 終極效能優化版 (無障礙 a11y + 消除 native confirm 阻塞)
  * 物理職責：
- * 1. 提供廠商端 17 欄位設備預約填報介面，具備舊換新業務邏輯。
- * 2. 恢復動態日曆、草稿儲存、進度查詢 (Progress Modal) 與 MAC 雙軌。
- * 3. 解決 ESLint no-explicit-any, no-unused-vars 與 no-inline-styles 報警。
+ * 1. 提供廠商端 17 欄位設備預約填報介面。
+ * 2. 【效能】徹底拔除 window.confirm 與 window.alert，替換為 Liquid UI 彈窗。
  * ==========================================
  */
 
-// 🚀 1. 定義設備項目的強型別
 interface AssetRow {
   id: number;
   model: string;
@@ -28,7 +26,6 @@ interface AssetRow {
   type: "NEW" | "REPLACE";
 }
 
-// 🚀 2. 定義進度查詢的強型別 (修復 no-explicit-any)
 interface ProgressRecord {
   formId?: string;
   form_id?: string;
@@ -62,9 +59,13 @@ function KeyinContent() {
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" | "info" }[]>([]);
   
   const [isProgressOpen, setIsProgressOpen] = useState(false);
-  // 🚀 修復 Line 56: Unexpected any
   const [progressData, setProgressData] = useState<ProgressRecord[]>([]);
   const [isProgressLoading, setIsProgressLoading] = useState(false);
+
+  // 🚀 1. 效能優化：自訂非阻塞確認彈窗
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false, title: "", message: "", type: "info" as "danger" | "info", onConfirm: () => {}
+  });
 
   const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
     const id = Date.now();
@@ -111,7 +112,6 @@ function KeyinContent() {
               showToast("✅ 已載入上次未提交之草稿", "info");
             }
           }
-        // 🚀 修復 Line 133: 'err' is defined but never used
         } catch (err: unknown) {
           console.warn("草稿讀取失敗", err);
         }
@@ -175,9 +175,7 @@ function KeyinContent() {
     
     try {
       const allPending = await getAdminPendingData();
-      // 🚀 修復 Line 176: Unexpected any
       const vendorHistory = allPending.filter((r: Record<string, unknown>) => String(r.vendor) === vendorName);
-      // 確保映射型別符合 ProgressRecord
       const typedHistory = vendorHistory.map((r: Record<string, unknown>) => ({
         formId: String(r.formId || r.form_id || ""),
         status: String(r.status || "未知"),
@@ -188,7 +186,6 @@ function KeyinContent() {
         rejectReason: String(r.rejectReason || "")
       }));
       setProgressData(typedHistory);
-    // 🚀 修復 Line 178: 'err' is defined but never used
     } catch (err: unknown) {
       console.error("無法讀取雲端紀錄", err);
       showToast("無法讀取雲端紀錄", "error");
@@ -197,14 +194,31 @@ function KeyinContent() {
     }
   };
 
+  // 🚀 2. 取代 window.confirm 的清空表單
   const clearAll = () => {
-    if (confirm("確定物理清空目前填報的所有設備？(資料將無法復原)")) {
-      // 🚀 修復 Line 188: 'e' is defined but never used
-      try { localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`); } catch(err: unknown) { console.warn("清理失敗", err); }
-      setUnit(""); setApplicant(""); setFloor(""); setArea("A"); setAreaOther("");
-      setRows([{ id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }]);
-      showToast("✅ 已清空表單", "info");
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: "清空表單確認",
+      message: "確定物理清空目前填報的所有設備？草稿與畫面資料將無法復原。",
+      type: "danger",
+      onConfirm: () => {
+        try { localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`); } catch(err: unknown) { console.warn("清理失敗", err); }
+        setUnit(""); setApplicant(""); setFloor(""); setArea("A"); setAreaOther("");
+        setRows([{ id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }]);
+        showToast("✅ 已清空表單", "info");
+      }
+    });
+  };
+
+  // 🚀 取代 window.confirm 的安全登出
+  const handleLogout = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "安全登出系統",
+      message: "確定離開填報系統？未提交的草稿已自動保存在您的設備中。",
+      type: "info",
+      onConfirm: () => router.push("/")
+    });
   };
 
   const handleSubmit = async () => {
@@ -266,7 +280,6 @@ function KeyinContent() {
     try {
       const res = await submitAssetBatch(batchData);
       if (res.success) {
-        // 🚀 修復 Line 261: 'e' is defined but never used
         try { localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`); } catch(err: unknown) { console.warn("清理失敗", err); }
         showToast("✅ 預約提交成功，即將重置畫面...", "success");
         setTimeout(() => { window.location.reload(); }, 2000);
@@ -291,7 +304,6 @@ function KeyinContent() {
         .type-btn.active { background: #ffffff; color: #2563eb; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); border: 1px solid rgba(226, 232, 240, 0.8); }
       `}} />
 
-      {/* 🚀 修復 Line 287: no-inline-styles (使用 Tailwind 任意變數取代) */}
       <div className="fixed z-[-1] blur-[80px] opacity-25 rounded-full pointer-events-none bg-blue-600 w-[500px] h-[500px] -top-48 -left-48 animate-pulse"></div>
       <div className="fixed z-[-1] blur-[80px] opacity-25 rounded-full pointer-events-none bg-cyan-400 w-[400px] h-[400px] top-1/2 -right-32 animate-pulse [animation-delay:2s]"></div>
 
@@ -313,7 +325,7 @@ function KeyinContent() {
               </button>
           </div>
           <div className="mt-auto flex flex-col gap-1 border-t border-slate-200/50 pt-4">
-              <button onClick={() => { if(confirm("確定安全登出系統？")) router.push("/"); }} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-all rounded-xl font-bold">
+              <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-all rounded-xl font-bold">
                   <span className="material-symbols-outlined text-[#ba1a1a]">logout</span>安全登出
               </button>
           </div>
@@ -376,7 +388,7 @@ function KeyinContent() {
 
                       <div className="mt-6 pt-6 border-t border-slate-200/50">
                           <div>
-                              <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2 block">VDS 派工單號 (自動)</label>
+                              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2 block">VDS 派工單號 (自動)</span>
                               <div className="compact-input font-mono text-sm shadow-inner text-center tracking-wider bg-slate-50/50">{vdsId}</div>
                           </div>
                       </div>
@@ -398,6 +410,8 @@ function KeyinContent() {
                                   </select>
                                   {area === "OTHER" && (
                                     <input 
+                                      id="d-area-other"
+                                      name="areaOther"
                                       value={areaOther} 
                                       title="手動輸入棟別"
                                       aria-label="手動輸入棟別"
@@ -460,7 +474,7 @@ function KeyinContent() {
 
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 md:gap-6">
                                 <div className="col-span-1 md:col-span-4">
-                                    <label className="saas-label">業務性質 (觸發封存)</label>
+                                    <span className="saas-label block">業務性質 (觸發封存)</span>
                                     <div className="type-toggle">
                                         <button onClick={() => { const n = [...rows]; n[i].type = "NEW"; setRows(n); }} className={`type-btn ${r.type === 'NEW' ? 'active' : ''}`}>🆕 資產新購</button>
                                         <button onClick={() => { const n = [...rows]; n[i].type = "REPLACE"; setRows(n); }} className={`type-btn ${r.type === 'REPLACE' ? 'active !text-orange-600' : ''}`}>🔄 舊機汰換</button>
@@ -546,7 +560,7 @@ function KeyinContent() {
                             <span className="material-symbols-outlined text-[26px]">manage_search</span>
                         </div>
                         <div>
-                            <h2 className="text-xl font-black text-slate-800 tracking-tight">申請進度查詢</h2>
+                            <h2 className="text-xl font-black text-slate-800 tracking-tight font-manrope">申請進度查詢</h2>
                             <p className="text-[10px] font-bold text-blue-600 tracking-widest uppercase mt-0.5">{vendorName} 的歷史預約紀錄</p>
                         </div>
                     </div>
@@ -591,6 +605,25 @@ function KeyinContent() {
                     )}
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* 🚀 自訂非阻塞確認彈窗 (Custom Confirm Modal) */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-[2000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 fade-enter">
+           <div className={`glass-card w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl bg-white/95 border-t-[8px] ${confirmDialog.type === 'danger' ? 'border-t-error' : 'border-t-blue-500'}`}>
+              <div className="p-8 text-center space-y-6">
+                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-inner border ${confirmDialog.type === 'danger' ? 'bg-red-50 text-error border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                   <span className="material-symbols-outlined text-3xl font-black">{confirmDialog.type === 'danger' ? 'warning' : 'help'}</span>
+                 </div>
+                 <h2 className="text-xl font-black text-slate-800 tracking-tight">{confirmDialog.title}</h2>
+                 <p className="text-xs font-bold text-slate-500">{confirmDialog.message}</p>
+                 <div className="flex gap-3 pt-2">
+                    <button onClick={() => setConfirmDialog(prev => ({...prev, isOpen: false}))} className="flex-1 py-3.5 bg-slate-100 rounded-xl font-black text-slate-600 uppercase hover:bg-slate-200 active:scale-95 transition-all text-xs tracking-wider">取消</button>
+                    <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({...prev, isOpen: false})); }} className={`flex-1 py-3.5 text-white rounded-xl font-black uppercase shadow-lg active:scale-95 transition-all text-xs tracking-wider ${confirmDialog.type === 'danger' ? 'bg-error shadow-red-500/30 hover:bg-red-600' : 'bg-blue-600 shadow-blue-500/30 hover:bg-blue-700'}`}>確認執行</button>
+                 </div>
+              </div>
+           </div>
         </div>
       )}
 
