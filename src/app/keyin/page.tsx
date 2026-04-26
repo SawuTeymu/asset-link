@@ -8,11 +8,12 @@ import { formatFloor, formatMAC } from "@/lib/logic/formatters";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V3.0 旗艦不刪減完全體 (消除所有 ESLint 警告)
+ * 狀態：V3.1 旗艦不刪減完全體 (全欄位與 MAC 規則強制對位)
  * 物理職責：
  * 1. 提供廠商端 17 欄位設備預約填報介面。
  * 2. 解決所有語法報警 (Unused vars, Cascading renders, Unused expressions)。
  * 3. 實作 [NEW/REPLACE] 業務對沖，確保 10.5px 行政視覺規範。
+ * 4. MAC 物理格式強制轉換 (XX:XX:XX:XX:XX:XX)。
  * ==========================================
  */
 
@@ -44,7 +45,9 @@ function KeyinContent() {
 
   // --- 2. 系統初始化 (解決 set-state-in-effect) ---
   useEffect(() => {
+    let mounted = true;
     const timer = setTimeout(() => {
+      if (!mounted) return;
       const now = new Date();
       const y = now.getFullYear().toString().slice(-2);
       const m = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -64,29 +67,42 @@ function KeyinContent() {
     }, 0);
 
     return () => {
+      mounted = false;
       clearTimeout(timer);
     };
   }, []);
 
   // --- 3. 提交動作邏輯 (解決 no-unused-expressions) ---
   const handleSubmit = async () => {
+    // A. 基礎防呆檢查
     if (!unit.trim() || !applicant.trim() || !floor.trim()) {
       alert("❌ 行政偏差：請完整填寫 使用單位、申請人姓名 及 樓層。");
       return;
     }
     
+    // B. MAC 格式深度驗證防線
+    const macRegex = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
+    for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (r.mac1 && !macRegex.test(r.mac1)) {
+            alert(`❌ 第 ${i + 1} 項設備的 MAC 格式異常！請確認格式為 XX:XX:XX:XX:XX:XX`);
+            return;
+        }
+    }
+
     setIsLoading(true);
 
+    // C. 17 欄位物理對沖載荷封裝
     const batchData = rows.map((r) => ({
       form_id: vdsId,
       install_date: new Date().toISOString().split('T')[0],
       area: area,
-      floor: formatFloor(floor),
-      unit: unit,
-      applicant: `${applicant}#${r.ext}`,
-      model: r.model,
+      floor: formatFloor(floor), // 強制補 00樓
+      unit: unit.trim(),
+      applicant: `${applicant.trim()}#${r.ext.trim()}`, // 強制 # 字元協議
+      model: r.model.trim(),
       sn: r.sn.toUpperCase().trim(),
-      mac1: formatMAC(r.mac1),
+      mac1: formatMAC(r.mac1), // 強制 MAC 引擎校對
       mac2: "",
       remark: r.type === "REPLACE" ? "[REPLACE] 舊換新預約" : "資產新購預約",
       vendor: vendorName,
@@ -117,6 +133,7 @@ function KeyinContent() {
 
       <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
         
+        {/* 🚀 Header: 廠商身分標記 */}
         <header className="glass-card p-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
            <div>
              <h1 className="text-2xl font-black text-slate-800 tracking-tighter">設備裝機預約填報</h1>
@@ -133,6 +150,7 @@ function KeyinContent() {
            </button>
         </header>
 
+        {/* 🚀 Section 1: 頂部共用行政資訊 */}
         <section className="glass-card p-8 space-y-6">
            <h3 className="font-black text-sm border-b border-slate-100 pb-4 text-primary flex items-center gap-2">
              <span className="material-symbols-outlined">domain</span> 行政資訊對沖
@@ -169,9 +187,10 @@ function KeyinContent() {
                   onChange={(e) => { setArea(e.target.value); }} 
                   className="input-base cursor-pointer"
                 >
-                  {["A","B","C","D","K"].map((v) => (
+                  {["A","B","C","D","E","G","H","I","K","T"].map((v) => (
                     <option key={v} value={v}>{v} 棟</option>
                   ))}
+                  <option value="OTHER">其他</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -189,6 +208,7 @@ function KeyinContent() {
            </div>
         </section>
 
+        {/* 🚀 Section 2: 設備明細清單 (動態陣列) */}
         <div className="space-y-6">
           {rows.map((r, i) => (
             <div key={r.id} className="glass-card p-8 space-y-6 border-l-[8px] border-l-primary animate-in slide-in-from-left-4 duration-300">
@@ -245,19 +265,34 @@ function KeyinContent() {
                     maxLength={12} 
                   />
                 </div>
+                
+                {/* 🚀 MAC 物理位址：格式化引擎掛載 */}
                 <div className="col-span-1 md:col-span-2 space-y-2">
                   <label className="text-[10px] font-black text-primary uppercase tracking-widest ml-1">主要網路位址 MAC (K)</label>
                   <input 
                     title="MAC 位址"
                     aria-label="MAC 位址"
                     value={r.mac1} 
-                    onChange={(e) => { const n = [...rows]; n[i].mac1 = formatMAC(e.target.value); setRows(n); }} 
+                    onChange={(e) => { 
+                        const n = [...rows]; 
+                        // 在輸入時即時轉大寫並過濾無效字元
+                        n[i].mac1 = e.target.value.toUpperCase().replace(/[^0-9A-F:-]/g, ''); 
+                        setRows(n); 
+                    }} 
+                    onBlur={(e) => {
+                        const n = [...rows];
+                        // 失去焦點時，物理觸發 12碼冒號 格式化引擎
+                        n[i].mac1 = formatMAC(e.target.value);
+                        setRows(n);
+                    }}
                     className="input-base font-mono text-primary uppercase tracking-widest" 
                     placeholder="XX:XX:XX:XX:XX:XX" 
+                    maxLength={17}
                   />
                 </div>
               </div>
               
+              {/* 移除按鈕 (僅在有多筆設備時顯示) */}
               {rows.length > 1 && (
                 <div className="flex justify-end pt-2">
                   <button 
@@ -273,6 +308,7 @@ function KeyinContent() {
           ))}
         </div>
         
+        {/* 🚀 Section 3: 底部操作區 */}
         <div className="space-y-4">
            <button 
              onClick={() => { setRows([...rows, { id: Date.now(), model: "", sn: "", mac1: "", ext: "", type: "NEW" }]); }} 
@@ -296,6 +332,7 @@ function KeyinContent() {
 
       </div>
 
+      {/* 🚀 物理防呆：全域 Loading 遮罩 */}
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-3 pointer-events-none w-full max-w-[320px] px-5">
         {isLoading && (
           <div className="px-6 py-4 bg-primary text-white rounded-2xl shadow-2xl font-black text-[11px] flex items-center gap-3 border border-white/20 animate-pulse">
@@ -308,6 +345,7 @@ function KeyinContent() {
   );
 }
 
+// 🚀 以 Suspense 包裝，安全獲取 URL 參數 (v=廠商名稱)
 export default function App() {
   return (
     <Suspense fallback={
