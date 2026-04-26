@@ -9,17 +9,17 @@ import {
   checkIpConflict, 
   getNextSequence 
 } from "@/lib/actions/assets";
-import { formatFloor } from "@/lib/logic/formatters";
 
-// 🚀 引入共用模組
+// 🚀 引入共用模組 (已物理移除未使用之 formatFloor)
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import TopNavbar from "@/components/layout/TopNavbar";
 
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V1.1 模組化完全體 (DRY 重構版 + 100% 綠燈)
+ * 狀態：V3.0 語法淨化完全體 (消除 fClean 與未使用引入報警)
  * 物理職責：處理待核定案件、單筆/批量對沖與退回
+ * 修正：設備名稱標記演算移除「樓」字元，並全面開放編輯權限。
  * ==========================================
  */
 
@@ -65,7 +65,7 @@ export default function PendingPage() {
     }
   }, [router, showToast]);
 
-  // 物理初始化 (Macrotask 推遲法，避免 ESLint 級聯渲染警告)
+  // 物理初始化
   useEffect(() => {
     let mounted = true;
     const timer = setTimeout(() => { if (mounted) refreshData(); }, 0);
@@ -110,8 +110,17 @@ export default function PendingPage() {
     setModalForm({ ...modalForm, ip: "", name: "演算中...", type: "桌上型電腦" });
     setActiveModal("approve");
 
-    // 物理格式化設備名稱特徵值
-    const floorPart = formatFloor(String(item.floor || ""));
+    // 🚀 物理格式化設備名稱特徵值 (移除樓層後綴)
+    // 🚀 修復 prefer-const：將 fClean 改為 const
+    const fClean = String(item.floor || "").trim().toUpperCase();
+    let floorPart = "";
+    if (fClean.startsWith('B')) {
+      floorPart = fClean.substring(0, 2);
+    } else {
+      // 物理移除「樓」字元，只保留數字並補齊兩位
+      floorPart = fClean.replace(/[^0-9]/g, '').padStart(2, '0'); 
+    }
+    
     const extRaw = String(item.ext || "");
     const extNum = extRaw.includes('#') ? extRaw.split('#')[1] : extRaw;
     let extPart = String(extNum || "").replace(/\D/g, '');
@@ -180,7 +189,9 @@ export default function PendingPage() {
   const exportMd = () => {
     if (!filteredData.length) return showToast("無數據可匯出", "error");
     let md = `# ERI 待核定清單 (${new Date().toLocaleDateString()})\n\n| 單位 | 位置 | 廠商 | 序號 | 狀態 |\n| :--- | :--- | :--- | :--- | :--- |\n`;
-    filteredData.forEach(r => md += `| ${String(r.unit || '')} | ${String(r.area || '')}${String(r.floor || '')} | ${String(r.vendor || '')} | ${String(r.sn || '')} | 待核發 |\n`);
+    filteredData.forEach(r => {
+      md += `| ${String(r.unit || '')} | ${String(r.area || '')}${String(r.floor || '')} | ${String(r.vendor || '')} | ${String(r.sn || '')} | 待核發 |\n`;
+    });
     const blob = new Blob([md], { type: 'text/markdown' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -206,12 +217,10 @@ export default function PendingPage() {
         .batch-bar.active { transform: translateY(0); }
       `}} />
 
-      {/* 🚀 模組化側邊欄 */}
       <AdminSidebar currentRoute="/pending" isOpen={isSidebarOpen} onLogout={handleLogout} />
 
       <main className="lg:ml-64 min-h-screen flex flex-col p-6 lg:p-10">
         
-        {/* 🚀 模組化頂部導覽列 */}
         <TopNavbar 
           title="待核定案件管理中樞" 
           subtitle="Queue Management"
@@ -289,7 +298,6 @@ export default function PendingPage() {
         </div>
       </main>
 
-      {/* 🚀 批量操作懸浮條 */}
       <div className={`batch-bar fixed bottom-8 left-0 lg:left-64 right-0 z-[150] flex justify-center px-4 pointer-events-none ${selectedSns.size > 0 ? 'active' : ''}`}>
         <div className="bg-slate-900/95 backdrop-blur-2xl text-white px-6 sm:px-8 py-4 rounded-[2rem] shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-white/20 pointer-events-auto w-full max-w-3xl">
           <div className="flex items-center gap-4 w-full sm:w-auto">
@@ -351,7 +359,14 @@ export default function PendingPage() {
                     </div>
                     <div className="col-span-2 flex flex-col gap-1.5">
                       <label htmlFor="name-input" className="text-[11px] font-black text-slate-700 uppercase tracking-wide">設備名稱標記 (M)</label>
-                      <input id="name-input" title="設備名稱" aria-label="設備名稱" value={modalForm.name} readOnly className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs font-black text-emerald-700 uppercase shadow-inner outline-none" />
+                      <input 
+                        id="name-input" 
+                        title="設備名稱" 
+                        aria-label="設備名稱" 
+                        value={modalForm.name} 
+                        onChange={e => setModalForm({...modalForm, name: e.target.value.toUpperCase()})}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none font-mono text-xs font-black text-emerald-700 uppercase shadow-inner transition-all" 
+                      />
                       <p className="text-[9px] text-slate-400 font-bold mt-1">* 系統命名規則：[棟別樓層] - [分機補1] - [流水號]</p>
                     </div>
                  </div>
