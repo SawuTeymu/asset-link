@@ -49,8 +49,9 @@ body {
 /* 玻璃擬態容器 */
 .glass-vessel {
   background: rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(40px);
+  /* 🚀 物理修復：帶有 -webkit- 前綴的屬性必須位於標準屬性之前 */
   -webkit-backdrop-filter: blur(40px);
+  backdrop-filter: blur(40px);
   border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: 0 10px 40px rgba(0, 88, 188, 0.06);
 }
@@ -116,6 +117,8 @@ body {
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
+  /* 🚀 物理修復：補齊標準屬性，解決 Edge/現代瀏覽器相容性與 Linter 報警 */
   -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
 }
