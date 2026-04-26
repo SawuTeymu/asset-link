@@ -39,7 +39,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 /**
  * ==========================================
  * 檔案：src/app/admin/page.tsx
- * 狀態：V3.1 旗艦重構版 (資料庫來源透明化)
+ * 狀態：V3.2 旗艦不刪減版 (消除所有 ESLint unused 與 any 報警)
  * 物理職責：全院資產對沖中樞、VANS 資安儀表板、數據源對位
  * ==========================================
  */
@@ -53,7 +53,9 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [loaderText, setLoaderText] = useState("驗證管理權限...");
   const [searchQuery, setSearchQuery] = useState("");
-  const [pageSize, setPageSize] = useState(50);
+  
+  // 🚀 修復 no-unused-vars: 移除未使用的 setPageSize，保留狀態
+  const [pageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" }[]>([]);
 
@@ -93,8 +95,9 @@ export default function AdminDashboard() {
       ]);
 
       // 客戶端二次演算 NSR 狀態 (對應 NSR 16 欄 M 欄位)
-      const nsrPending = nsrData.filter((r: any) => ["未處理", "待處理", ""].includes(String(r.status || "").trim())).length;
-      const nsrSettle = nsrData.filter((r: any) => String(r.status || "").trim() === "已核定").length;
+      // 🚀 修復 no-explicit-any: 替換為 Record<string, unknown>
+      const nsrPending = nsrData.filter((r: Record<string, unknown>) => ["未處理", "待處理", ""].includes(String(r.status || "").trim())).length;
+      const nsrSettle = nsrData.filter((r: Record<string, unknown>) => String(r.status || "").trim() === "已核定").length;
 
       setStats({ ...eriStats, nsrPending, nsrSettle });
       setVansMetrics(vans);
@@ -124,6 +127,8 @@ export default function AdminDashboard() {
       showToast(res.message, res.success ? "success" : "error");
       if (res.success) syncCoreData();
     } catch (e: unknown) {
+      // 🚀 修復 no-unused-vars: 物理印出錯誤日誌，確保 e 被調用
+      console.error("【種子投放異常】:", e);
       showToast("投放失敗", "error");
     } finally {
       setIsLoading(false);

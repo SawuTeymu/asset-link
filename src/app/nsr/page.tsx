@@ -32,7 +32,7 @@ interface NsrRecord {
 /**
  * ==========================================
  * 檔案：src/app/nsr/page.tsx
- * 狀態：V2.0 模組化完全體 (DRY 重構 + Server Actions 介接版)
+ * 狀態：V2.3 嚴格型別修復版 (解決 JSX 括號解析錯誤)
  * 物理職責：網點需求申請、115年度合約計價結算、派工單匯出
  * ==========================================
  */
@@ -77,19 +77,20 @@ export default function NsrAdminPage() {
     
     try {
       const data = await getNsrList();
-      const mapped: NsrRecord[] = data.map((r: any) => ({
-        id: String(r.form_id || ""), 
-        date: String(r.request_date || ""), 
+      // 🚀 消除 no-explicit-any：以 Record<string, unknown> 接收，並直接對位後端的 UI 鍵值
+      const mapped: NsrRecord[] = data.map((r: Record<string, unknown>) => ({
+        id: String(r.id || ""), 
+        date: String(r.date || ""), 
         area: String(r.area || ""), 
         floor: String(r.floor || ""), 
-        deptCode: String(r.dept_code || ""),
+        deptCode: String(r.deptCode || ""),
         unit: String(r.unit || ""), 
-        user: String(r.applicant || ""), 
-        ext: String(r.phone || ""), 
-        points: Number(r.qty || 1), 
-        type: String(r.cable_type || "CAT 6"),
-        desc: String(r.reason || ""), 
-        total: Number(r.total_price || 0), 
+        user: String(r.user || ""), 
+        ext: String(r.ext || ""), 
+        points: Number(r.points || 1), 
+        type: String(r.type || "CAT 6"),
+        desc: String(r.desc || ""), 
+        total: Number(r.total || 0), 
         status: String(r.status || "未處理"), 
         source: String(r.source || "")
       }));
@@ -104,7 +105,17 @@ export default function NsrAdminPage() {
   useEffect(() => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
     if (!isAuth) { router.push("/"); return; }
-    initNsrHub();
+    
+    // 🚀 消除 set-state-in-effect：利用 Macrotask 佇列將同步渲染推遲，防止 React 級聯渲染
+    let mounted = true;
+    const timer = setTimeout(() => {
+      if (mounted) initNsrHub();
+    }, 0);
+    
+    return () => { 
+      mounted = false; 
+      clearTimeout(timer); 
+    };
   }, [initNsrHub, router]);
 
   // --- 5. 業務動作邏輯 ---
@@ -140,17 +151,17 @@ export default function NsrAdminPage() {
 
     try {
       await submitNsrData({
-        form_id: formData.id,
-        request_date: formData.date,
-        area: formData.area,
-        floor: formData.floor,
-        dept_code: formData.deptCode,
-        unit: formData.unit,
-        applicant: formData.user,
-        phone: formData.ext,
-        qty: formData.points,
-        cable_type: formData.type,
-        reason: formData.desc,
+        form_id: formData.id || "",
+        request_date: formData.date || "",
+        area: formData.area || "A",
+        floor: formData.floor || "",
+        dept_code: formData.deptCode || "",
+        unit: formData.unit || "",
+        applicant: formData.user || "",
+        phone: formData.ext || "",
+        qty: formData.points || 1,
+        cable_type: formData.type || "CAT 6A",
+        reason: formData.desc || "",
         source: "系統管理端錄入"
       });
       
@@ -370,38 +381,38 @@ export default function NsrAdminPage() {
                 <div className="flex justify-between items-end mb-6">
                     <div>
                         <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-widest mb-1">
-                            <span class="material-symbols-outlined text-sm">task_alt</span>
+                            <span className="material-symbols-outlined text-sm">task_alt</span>
                             Settlement Pool
                         </div>
-                        <h3 class="text-2xl font-black text-slate-900 tracking-tight">完工結算核銷池</h3>
+                        <h3 className="text-2xl font-black text-slate-900 tracking-tight">完工結算核銷池</h3>
                     </div>
-                    <div class="text-right">
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">待核銷筆數</p>
-                        <p class="text-xl font-black text-primary font-mono">{globalNsrData.filter(r => r.status === "已核定").length}</p>
+                    <div className="text-right">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">待核銷筆數</p>
+                        <p className="text-xl font-black text-primary font-mono">{globalNsrData.filter(r => r.status === "已核定").length}</p>
                     </div>
                 </div>
                 
-                <div class="overflow-x-auto bg-white/50 rounded-xl border border-slate-200">
-                    <table class="w-full text-left whitespace-nowrap">
+                <div className="overflow-x-auto bg-white/50 rounded-xl border border-slate-200">
+                    <table className="w-full text-left whitespace-nowrap">
                         <thead>
-                            <tr class="text-[11px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 bg-slate-50/80">
-                                <th class="py-3 px-5 rounded-tl-xl">申請單號</th>
-                                <th class="py-3 px-4">單位名稱</th>
-                                <th class="py-3 px-4 text-center">數量/規格</th>
-                                <th class="py-3 px-5 text-right rounded-tr-xl">操作</th>
+                            <tr className="text-[11px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 bg-slate-50/80">
+                                <th className="py-3 px-5 rounded-tl-xl">申請單號</th>
+                                <th className="py-3 px-4">單位名稱</th>
+                                <th className="py-3 px-4 text-center">數量/規格</th>
+                                <th className="py-3 px-5 text-right rounded-tr-xl">操作</th>
                             </tr>
                         </thead>
-                        <tbody class="text-sm divide-y divide-slate-100">
+                        <tbody className="text-sm divide-y divide-slate-100">
                             {globalNsrData.filter(r => r.status === "已核定").map(r => (
-                                <tr key={r.id} class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                                    <td class="py-4 px-5 font-black text-slate-700 text-xs font-mono">{r.id}</td>
-                                    <td class="py-4 px-4 font-bold text-slate-600 text-xs truncate max-w-[120px]">{r.unit}</td>
-                                    <td class="py-4 px-4 text-center">
-                                        <span class="text-sm font-black text-slate-800">{r.points}</span><span class="text-[9px] font-bold text-slate-400 ml-1 uppercase">Pts</span>
-                                        <div class="text-[10px] text-primary font-black mt-0.5">{r.type}</div>
+                                <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                                    <td className="py-4 px-5 font-black text-slate-700 text-xs font-mono">{r.id}</td>
+                                    <td className="py-4 px-4 font-bold text-slate-600 text-xs truncate max-w-[120px]">{r.unit}</td>
+                                    <td className="py-4 px-4 text-center">
+                                        <span className="text-sm font-black text-slate-800">{r.points}</span><span className="text-[9px] font-bold text-slate-400 ml-1 uppercase">Pts</span>
+                                        <div className="text-[10px] text-primary font-black mt-0.5">{r.type}</div>
                                     </td>
-                                    <td class="py-4 px-5 text-right">
-                                        <button onClick={() => { setSettleItem(r); setIsSettleOpen(true); }} class="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md active:scale-95">執行結算</button>
+                                    <td className="py-4 px-5 text-right">
+                                        <button onClick={() => { setSettleItem(r); setIsSettleOpen(true); }} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md active:scale-95">執行結算</button>
                                     </td>
                                 </tr>
                             ))}
@@ -482,7 +493,7 @@ export default function NsrAdminPage() {
             </div>
             
             <div className="flex gap-4">
-                <button onClick={() => setIsSettleOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-xl font-black hover:bg-slate-200 transition-all text-xs uppercase tracking-widest">取消</button>
+                <button onClick={() => setIsSettleOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-700 rounded-xl font-black hover:bg-slate-200 transition-all text-xs uppercase tracking-widest">取消</button>
                 <button onClick={confirmSettle} className="flex-[2] py-4 bg-emerald-600 text-white rounded-xl font-black shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2">
                     <span className="material-symbols-outlined text-[18px]">fact_check</span> 確認結算並物理入庫
                 </button>

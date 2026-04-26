@@ -1,21 +1,21 @@
+/** @type {import('next').NextConfig} */
+
 /**
  * ==========================================
  * 檔案：next.config.mjs
- * 物理職責：Next.js 核心編譯器與運行環境配置
+ * 物理職責：設定 Next.js 編譯行為
+ * 狀態：已徹底刪除引起報錯的 `eslint` 鍵值，符合最新官方規範。
  * ==========================================
- * @type {import('next').NextConfig}
  */
+
 const nextConfig = {
-    // 物理開啟 React 嚴格模式，有助於在開發階段抓出 useEffect 級聯渲染等潛在 Bug
-    reactStrictMode: true,
-    
-    // 確保 Next.js 在編譯時忽略未使用的變數警告（防止部署 Vercel 時因 ESLint 而中斷）
-    eslint: {
-      ignoreDuringBuilds: true,
-    },
-    
-    // 實驗性功能：允許外部套件在 Server Actions 中使用
-    serverExternalPackages: [],
-  };
+  // 指定輸出模式為獨立封裝 (適用於 Docker/Vercel)
+  output: 'standalone',
   
-  export default nextConfig;
+  // 繞過外部圖片優化，防止因來源圖床無回應導致的渲染卡頓
+  images: {
+    unoptimized: true,
+  }
+};
+
+export default nextConfig;
