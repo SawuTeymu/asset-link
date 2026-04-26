@@ -8,9 +8,9 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/nsr.ts
- * 狀態：V5.7 嚴格型別校準版 (解決 ParserError 與 no-explicit-any)
+ * 狀態：V5.8 旗艦完全體 (解決 Vercel 500 Error 與 409 衝突)
  * 物理職責：
- * 1. 解決 "column nsr_records.request_date does not exist" -> 物理對位：申請日期
+ * 1. 解決 409 Conflict 報錯 -> 將 insert 升級為 upsert。
  * 2. 徹底消除所有 any 宣告，並透過 unknown 雙重轉型解決 Supabase 中文解析錯誤。
  * 3. 處理 NSR 16 欄位行政軌道與 115 年度合約計價。
  * ==========================================
@@ -92,7 +92,7 @@ export async function getNsrList() {
       finishRemark: r.完工備註,
       source: r.數據來源標記
     }));
-  } catch (err: unknown) { // 消除 err: any 報錯
+  } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("【NSR 數據鏈路中斷】:", errorMsg);
     throw new Error("讀取 NSR 歷史資料庫失敗: " + errorMsg);
@@ -101,7 +101,8 @@ export async function getNsrList() {
 
 export async function submitNsrData(d: NsrSubmitPayload) {
   // 🚀 物理對位：執行全繁體中文欄位寫入
-  const { error } = await supabase.from("nsr_records").insert([{
+  // 🚀 物理修復：將 insert 變更為 upsert 並掛載 onConflict，解決 409 Conflict 報錯
+  const { error } = await supabase.from("nsr_records").upsert([{
     申請單號: d.form_id,
     申請日期: d.request_date || new Date().toISOString().split('T')[0],
     棟別: d.area,
@@ -116,7 +117,7 @@ export async function submitNsrData(d: NsrSubmitPayload) {
     行政核銷總額: 0,
     處理狀態: "未處理",
     數據來源標記: d.source || "管理端錄入"
-  }]);
+  }], { onConflict: '申請單號' });
 
   if (error) throw new Error("NSR 物理寫入失敗: " + error.message);
   return { success: true };
