@@ -8,10 +8,10 @@ import { formatFloor, formatMAC } from "@/lib/logic/formatters";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V3.1 旗艦不刪減完全體 (全欄位與 MAC 規則強制對位)
+ * 狀態：V3.2 旗艦不刪減完全體 (修復廠商身分 Session 斷鏈)
  * 物理職責：
  * 1. 提供廠商端 17 欄位設備預約填報介面。
- * 2. 解決所有語法報警 (Unused vars, Cascading renders, Unused expressions)。
+ * 2. 精準對位首頁傳遞之 sessionStorage 身分憑證。
  * 3. 實作 [NEW/REPLACE] 業務對沖，確保 10.5px 行政視覺規範。
  * 4. MAC 物理格式強制轉換 (XX:XX:XX:XX:XX:XX)。
  * ==========================================
@@ -31,8 +31,8 @@ function KeyinContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // 物理對位：獲取廠商身分，若無參數則回退至「訪客」
-  const vendorName = searchParams.get("v") || "訪客";
+  // 🚀 修正點：將 vendorName 升級為 React 狀態，以便承接瀏覽器的 SessionStorage
+  const [vendorName, setVendorName] = useState("身分對沖中...");
 
   // --- 核心表單狀態 ---
   const [vdsId, setVdsId] = useState("");
@@ -43,11 +43,18 @@ function KeyinContent() {
   const [rows, setRows] = useState<AssetRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- 2. 系統初始化 (解決 set-state-in-effect) ---
+  // --- 2. 系統初始化 (解決 set-state-in-effect 與身分斷鏈) ---
   useEffect(() => {
     let mounted = true;
     const timer = setTimeout(() => {
       if (!mounted) return;
+
+      // 🚀 物理對位修復：攔截 Next.js 首頁寫入的 sessionStorage 登入憑證
+      // 保留 searchParams.get("v") 作為直接貼上舊版網址的向下相容防線
+      const sessionVendor = sessionStorage.getItem("asset_link_vendor");
+      const urlVendor = searchParams.get("v");
+      setVendorName(sessionVendor || urlVendor || "訪客");
+
       const now = new Date();
       const y = now.getFullYear().toString().slice(-2);
       const m = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -70,7 +77,7 @@ function KeyinContent() {
       mounted = false;
       clearTimeout(timer);
     };
-  }, []);
+  }, [searchParams]);
 
   // --- 3. 提交動作邏輯 (解決 no-unused-expressions) ---
   const handleSubmit = async () => {
@@ -105,7 +112,7 @@ function KeyinContent() {
       mac1: formatMAC(r.mac1), // 強制 MAC 引擎校對
       mac2: "",
       remark: r.type === "REPLACE" ? "[REPLACE] 舊換新預約" : "資產新購預約",
-      vendor: vendorName,
+      vendor: vendorName, // 🚀 完美繼承已驗證的廠商名稱
       status: "待核定"
     }));
 
@@ -345,7 +352,7 @@ function KeyinContent() {
   );
 }
 
-// 🚀 以 Suspense 包裝，安全獲取 URL 參數 (v=廠商名稱)
+// 🚀 以 Suspense 包裝，安全獲取 URL 參數
 export default function App() {
   return (
     <Suspense fallback={
