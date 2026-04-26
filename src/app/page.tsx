@@ -3,29 +3,33 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_CREDENTIALS_LIST } from "@/lib/constants";
 
 /**
  * ==========================================
  * 檔案：src/app/page.tsx
- * 狀態：V2.2 ESLint 100% 綠燈最終版
+ * 狀態：V2.6 嚴格語法防護版 (移除冗餘 eslint-disable)
+ * 物理職責：
+ * 1. 執行登入分流與本地密碼驗證。
+ * 2. 維持 100% 嚴格語法保護，並消除未使用之抑制指令。
  * ==========================================
  */
+
+// 🚀 1. 定義廠商資料庫回傳強型別 (消滅 ParserError)
+interface VendorDbRow {
+  廠商名稱: string;
+  行政狀態: string;
+}
 
 export default function LoginPage() {
   const router = useRouter();
 
   // --- 狀態管理 ---
   const [loginType, setLoginType] = useState<"admin" | "vendor" | null>(null);
-  
-  // 管理員狀態 (純本地帳密)
   const [adminAccount, setAdminAccount] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
-  
-  // 廠商狀態
   const [vendors, setVendors] = useState<{name: string, status: string}[]>([]);
   const [selectedVendor, setSelectedVendor] = useState("");
-  
-  // 共用狀態
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -35,21 +39,30 @@ export default function LoginPage() {
       try {
         const { data, error } = await supabase
           .from("vendors")
-          .select("name, status")
-          .eq("is_active", true)
-          .order("name", { ascending: true });
+          .select("廠商名稱, 行政狀態")
+          .eq("授權啟用開關", true)
+          .order("廠商名稱", { ascending: true });
 
         if (error) throw error;
-        setVendors(data || []);
+        
+        // 🚀 雙重轉型：抹除 Supabase 的 ParserError，強制套用正確中文介面
+        const typedData = data as unknown as VendorDbRow[] | null;
+        
+        // 🚀 數據對映：現在 v 具備強型別，不再觸發 TS2345
+        const mappedData = (typedData || []).map((v) => ({
+          name: String(v.廠商名稱 || ""),
+          status: String(v.行政狀態 || "")
+        }));
+        
+        setVendors(mappedData);
       } catch (err: unknown) {
-        // 物理修復：將 any 改為 unknown，並透過 instanceof 檢查
         console.error("廠商名單同步失敗:", err instanceof Error ? err.message : String(err));
       }
     };
     fetchVendors();
   }, []);
 
-  // --- 登入邏輯：本地帳密物理驗證 (非 SSO) ---
+  // --- 登入邏輯：多帳戶迴圈物理驗證 ---
   const handleAdminLogin = () => {
     setErrorMsg("");
     if (!adminAccount.trim() || !adminPassword.trim()) {
@@ -59,8 +72,12 @@ export default function LoginPage() {
 
     setIsLoading(true);
     
-    // 物理驗證：直接比對特權帳密，不依賴外部 SSO
-    if (adminAccount === "020807" && adminPassword === "r4r8dWJSP5Z") {
+    // 物理驗證：比對 constants.ts 中的帳密陣列
+    const isValidAdmin = ADMIN_CREDENTIALS_LIST.some(
+      (admin) => admin.uid === adminAccount && admin.password === adminPassword
+    );
+
+    if (isValidAdmin) {
       sessionStorage.setItem("asset_link_admin_auth", "true");
       router.push("/admin");
     } else {
@@ -77,7 +94,7 @@ export default function LoginPage() {
       return;
     }
     const vendorData = vendors.find(v => v.name === selectedVendor);
-    if (vendorData?.status === '停權') {
+    if (vendorData?.status === '停權' || vendorData?.status === '停用') {
        setErrorMsg("⚠️ 您的帳號已被凍結，請聯繫資訊室。");
        return;
     }
@@ -112,8 +129,9 @@ export default function LoginPage() {
           {/* 頻道選擇按鈕 */}
           {!loginType && (
             <div className="space-y-4">
+              {/* 🚀 防護點：確保事件回傳具備大括號，消滅 unused-expressions */}
               <button 
-                onClick={() => setLoginType("vendor")}
+                onClick={() => { setLoginType("vendor"); }}
                 className="w-full p-5 rounded-2xl bg-white border-2 border-slate-100 hover:border-primary hover:bg-blue-50/50 transition-all group flex items-center gap-4 text-left"
               >
                 <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
@@ -126,7 +144,7 @@ export default function LoginPage() {
               </button>
 
               <button 
-                onClick={() => setLoginType("admin")}
+                onClick={() => { setLoginType("admin"); }}
                 className="w-full p-5 rounded-2xl bg-white border-2 border-slate-100 hover:border-slate-900 hover:bg-slate-900 transition-all group flex items-center gap-4 text-left"
               >
                 <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-white/20 flex items-center justify-center transition-colors">
@@ -152,7 +170,12 @@ export default function LoginPage() {
           {loginType === "admin" && (
             <div className="space-y-5">
               <div className="flex items-center gap-3 mb-6">
-                 <button onClick={() => {setLoginType(null); setErrorMsg(""); setAdminPassword(""); setAdminAccount("");}} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"><span className="material-symbols-outlined text-sm">arrow_back</span></button>
+                 <button 
+                   onClick={() => { setLoginType(null); setErrorMsg(""); setAdminPassword(""); setAdminAccount(""); }} 
+                   className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"
+                 >
+                   <span className="material-symbols-outlined text-sm">arrow_back</span>
+                 </button>
                  <h2 className="text-lg font-black text-slate-800">管理者登入</h2>
               </div>
               <div className="space-y-4">
@@ -160,27 +183,31 @@ export default function LoginPage() {
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理帳號</label>
                   <input 
                     type="text" 
+                    title="管理帳號"
+                    aria-label="管理帳號"
                     value={adminAccount}
-                    onChange={(e) => setAdminAccount(e.target.value)}
+                    onChange={(e) => { setAdminAccount(e.target.value); }}
                     placeholder="請輸入帳號"
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-slate-900 focus:bg-white transition-all placeholder:text-slate-300"
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAdminLogin(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { handleAdminLogin(); } }}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理密碼</label>
                   <input 
                     type="password" 
+                    title="管理密碼"
+                    aria-label="管理密碼"
                     value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
+                    onChange={(e) => { setAdminPassword(e.target.value); }}
                     placeholder="••••••••"
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-slate-900 focus:bg-white transition-all placeholder:text-slate-300 tracking-widest"
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAdminLogin(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { handleAdminLogin(); } }}
                   />
                 </div>
               </div>
               <button 
-                onClick={handleAdminLogin}
+                onClick={() => { handleAdminLogin(); }}
                 disabled={isLoading}
                 className="w-full bg-slate-900 text-white rounded-2xl py-4 mt-2 font-black uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 flex items-center justify-center gap-2"
               >
@@ -193,7 +220,12 @@ export default function LoginPage() {
           {loginType === "vendor" && (
             <div className="space-y-5">
               <div className="flex items-center gap-3 mb-6">
-                 <button onClick={() => {setLoginType(null); setErrorMsg("");}} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"><span className="material-symbols-outlined text-sm">arrow_back</span></button>
+                 <button 
+                   onClick={() => { setLoginType(null); setErrorMsg(""); }} 
+                   className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"
+                 >
+                   <span className="material-symbols-outlined text-sm">arrow_back</span>
+                 </button>
                  <h2 className="text-lg font-black text-slate-800">選擇駐點廠商</h2>
               </div>
               <div className="space-y-2">
@@ -201,7 +233,7 @@ export default function LoginPage() {
                 <div className="relative">
                   <select 
                     value={selectedVendor}
-                    onChange={(e) => setSelectedVendor(e.target.value)}
+                    onChange={(e) => { setSelectedVendor(e.target.value); }}
                     title="選擇廠商"
                     aria-label="選擇廠商"
                     className="w-full appearance-none bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-primary focus:bg-white transition-all"
@@ -209,7 +241,7 @@ export default function LoginPage() {
                     <option value="" disabled>請選擇您的廠商名稱...</option>
                     {vendors.map(v => (
                       <option key={v.name} value={v.name}>
-                        {v.name} {v.status === '停權' ? '(🚫 已停權)' : ''}
+                        {v.name} {v.status === '停用' || v.status === '停權' ? '(🚫 已停用)' : ''}
                       </option>
                     ))}
                   </select>
@@ -217,7 +249,7 @@ export default function LoginPage() {
                 </div>
               </div>
               <button 
-                onClick={handleVendorLogin}
+                onClick={() => { handleVendorLogin(); }}
                 disabled={isLoading || vendors.length === 0}
                 className="w-full bg-primary text-white rounded-2xl py-4 font-black uppercase tracking-widest hover:bg-primary/90 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
               >
