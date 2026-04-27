@@ -69,7 +69,9 @@ function KeyinContent() {
   const [isProgressOpen, setIsProgressOpen] = useState(false);
   const [progressData, setProgressData] = useState<ProgressRecord[]>([]);
   const [isProgressLoading, setIsProgressLoading] = useState(false);
-  const [expandedSn, setExpandedSn] = useState<string | null>(null);
+  
+  // 🚀 狀態控制：控制目前展開哪一筆案件的全資料
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [confirmDialog, setConfirmDialog] = useState({ 
     isOpen: false, title: "", message: "", type: "info" as "danger" | "info", onConfirm: () => {} 
@@ -471,7 +473,7 @@ function KeyinContent() {
                         <div className="py-24 text-center opacity-50"><span className="material-symbols-outlined text-5xl mb-3">inbox</span><p className="text-xs font-black uppercase text-slate-500">查無紀錄 (僅顯示近一個月安裝)</p></div>
                     ) : (
                         progressData.map((item, idx) => (
-                            <div key={idx} className={`p-5 rounded-2xl flex flex-col transition-all border mb-3 group ${expandedSn === item.sn ? 'bg-white shadow-xl border-blue-200' : 'bg-slate-50/50 border-slate-200 hover:shadow-md'}`}>
+                            <div key={idx} className={`p-5 rounded-2xl flex flex-col transition-all border mb-3 group ${expandedId === item.sn ? 'bg-white shadow-xl border-blue-200' : 'bg-slate-50/50 border-slate-200 hover:shadow-md'}`}>
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <span className="text-sm font-black text-slate-800 font-mono uppercase tracking-tighter">{item.sn}</span>
@@ -486,15 +488,15 @@ function KeyinContent() {
                                     </div>
                                     <div className="flex items-center gap-4 text-[11px] font-bold text-slate-500">
                                         <span className="hidden sm:inline">{item.date} | {item.unit}</span>
-                                        <button onClick={() => setExpandedSn(expandedSn === item.sn ? null : item.sn)} className="flex items-center gap-1 text-blue-600 font-black">
-                                            {expandedSn === item.sn ? '收起詳情' : '查看全資料'}
-                                            <span className="material-symbols-outlined text-sm">{expandedSn === item.sn ? 'expand_less' : 'expand_more'}</span>
+                                        <button onClick={() => setExpandedId(expandedId === item.sn ? null : item.sn)} className="flex items-center gap-1 text-blue-600 font-black">
+                                            {expandedId === item.sn ? '收起詳情' : '查看全資料'}
+                                            <span className="material-symbols-outlined text-sm">{expandedId === item.sn ? 'expand_less' : 'expand_more'}</span>
                                         </button>
                                     </div>
                                 </div>
                                   
                                 {/* 🚀 單筆案件全資料展示區塊 (展開後呈現所有物理欄位) */}
-                                {expandedSn === item.sn && (
+                                {expandedId === item.sn && (
                                     <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1">
                                             <div className="detail-row"><span className="detail-key">案件單號：</span><span className="detail-val">{item.formId}</span></div>
