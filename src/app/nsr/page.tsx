@@ -37,12 +37,11 @@ interface NsrRecord {
 /**
  * ==========================================
  * 檔案：src/app/nsr/page.tsx
- * 狀態：V6.5 旗艦終極版 (物理刪除 + 全資料輸出 + 型別全對沖)
- * 物理職職責：
- * 1. 行政錄入：15 位單號自動解碼，含施工事由。
- * 2. 派工輸出：純淨純文字輸出，包含所有物理欄位。
- * 3. 結算核銷：對沖 115 年度合約階梯計價矩陣。
- * 4. 權限管控：管理者專屬之物理刪除功能。
+ * 狀態：V6.6 旗艦終極版 (姓名#分機自動化 + 物理刪除 + 全資料輸出)
+ * 物理職責：
+ * 1. 行政自動化：15位單號解碼，且姓名欄位空格自動轉 #。
+ * 2. 派工輸出：純淨全資料輸出，移除冗餘符號。
+ * 3. 權限管控：管理者專屬物理刪除與結算。
  * ==========================================
  */
 
@@ -78,7 +77,6 @@ export default function NsrAdminPage() {
     setLoaderText("對接 115 年度合約雲端資料庫...");
     try {
       const data = await getNsrList();
-      // 物理映射：將 Supabase 中文欄位轉換為前端強型別
       const mapped = (data || []).map((r: any) => ({
         id: r.申請單號,
         date: r.申請日期,
@@ -111,7 +109,7 @@ export default function NsrAdminPage() {
   // --- 4. 業務動作邏輯 ---
 
   /**
-   * 🚀 物理對沖：15位單號 C01YYYYMMDDSSSS 自動物理擷取日期
+   * 🚀 物理對沖：15位單號自動日期解碼
    */
   const handleIdInput = (val: string) => {
     const id = val.toUpperCase();
@@ -126,10 +124,21 @@ export default function NsrAdminPage() {
   };
 
   /**
-   * 🚀 需求錄入存檔 (補齊 dept_code 與 reason)
+   * 🚀 物理自動化：空格自動帶入 #
+   * 物理規則：當使用者輸入空格時，自動替換為 #，確保符合 姓名#分機 格式。
+   */
+  const handleUserChange = (val: string) => {
+    const formatted = val.replace(/\s+/g, '#');
+    setFormData({ ...formData, user: formatted });
+  };
+
+  /**
+   * 🚀 需求錄入存檔
    */
   const submitNSR = async () => {
     if (!formData.id || !formData.unit) return showToast("單號與單位為絕對必填", "error");
+    if (formData.user && !formData.user.includes("#")) return showToast("人員格式錯誤 (需為 姓名#分機)", "error");
+    
     setIsLoading(true);
     setLoaderText("行政數據物理封裝中...");
     try {
@@ -153,7 +162,7 @@ export default function NsrAdminPage() {
   };
 
   /**
-   * 🚀 管理者物理刪除：抹除資料庫紀錄
+   * 🚀 管理者物理刪除
    */
   const executeDelete = async () => {
     if (!confirmDeleteId) return;
@@ -164,12 +173,11 @@ export default function NsrAdminPage() {
       showToast("✅ 已成功抹除案件紀錄", "success");
       setConfirmDeleteId(null);
       refreshData();
-    } catch (e) { showToast("刪除失敗，請檢查 Action 匯出", "error"); } finally { setIsLoading(false); }
+    } catch (e) { showToast("刪除失敗", "error"); } finally { setIsLoading(false); }
   };
 
   /**
-   * 🚀 全資料純淨輸出 (派工單匯出)
-   * 物理規則：包含全部行政欄位，移除裝飾符號。
+   * 🚀 全資料純淨輸出 (派工單)
    */
   const handleDispatch = async (item: NsrRecord) => {
     const content = [
@@ -201,9 +209,6 @@ export default function NsrAdminPage() {
     } catch (e) { showToast("狀態更新失敗", "error"); }
   };
 
-  /**
-   * 🚀 115 年度計價預覽
-   */
   const previewTotal = useMemo(() => {
     if (!settleItem) return 0;
     return calculateNsrPrice(
@@ -214,9 +219,6 @@ export default function NsrAdminPage() {
     );
   }, [settleItem, settleConfig]);
 
-  /**
-   * 🚀 執行完工核銷 (解決 TS2345：補齊 finishRemark)
-   */
   const confirmSettleAction = async () => {
     if (!settleItem) return;
     setIsLoading(true);
@@ -234,17 +236,14 @@ export default function NsrAdminPage() {
     } catch (e) { showToast("核銷處理失敗", "error"); } finally { setIsLoading(false); }
   };
 
-  // 工作流分池
   const pendingPool = globalNsrData.filter(r => ["未處理", "待處理", "已派工"].includes(r.status));
   const finishPool = globalNsrData.filter(r => r.status === "已完工" || (r.status === "已派工" && !r.total));
 
   return (
     <div className="bg-[#f2f5f8] min-h-screen text-[#1d1d1f] font-sans antialiased overflow-x-hidden">
-      {/* 🚀 物理修正：Sidebar 使用正確屬性 currentRoute */}
       <AdminSidebar currentRoute="/nsr" isOpen={isSidebarOpen} onLogout={() => router.push("/")} />
 
       <main className="lg:ml-64 p-6 lg:p-10 flex flex-col gap-8">
-        {/* 🚀 物理修正：補齊 TopNavbar 必填之 onMenuToggle */}
         <TopNavbar 
             title="NSR 需求管理與計價核銷中樞" 
             onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} 
@@ -252,17 +251,16 @@ export default function NsrAdminPage() {
 
         <div className="grid grid-cols-12 gap-8 max-w-[1600px] mx-auto w-full">
           
-          {/* 左軌：需求錄入 (保留旗艦級玻璃擬態) */}
           <div className="col-span-12 lg:col-span-4">
             <section className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 border border-white sticky top-10">
                 <div className="flex items-center gap-3 mb-8 border-b pb-4">
                     <span className="material-symbols-outlined text-blue-600 text-3xl font-black">edit_square</span>
-                    <h2 className="text-xl font-black text-slate-800 tracking-tight">錄入施工需求</h2>
+                    <h2 className="text-xl font-black text-slate-800">錄入施工需求</h2>
                 </div>
                 
                 <div className="space-y-6">
                     <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block mb-2 tracking-widest" htmlFor="nsr-id-in">申請單號 (15位物理偵測)</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block mb-2 tracking-widest" htmlFor="nsr-id-in">申請單號 (15位物理格式)</label>
                         <input id="nsr-id-in" value={formData.id} onChange={e => handleIdInput(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-mono font-black text-blue-700 focus:ring-2 focus:ring-blue-600 outline-none transition-all shadow-inner" placeholder="C01YYYYMMDDSSSS" maxLength={15} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -299,10 +297,10 @@ export default function NsrAdminPage() {
                         <input id="nsr-dept-in" value={formData.deptCode} onChange={e => setFormData({...formData, deptCode: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold mb-3 shadow-inner" placeholder="例如：1N12" title="部門代碼" />
                         
                         <label className="text-[10px] font-black text-slate-400 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-unit-in">使用單位</label>
-                        <input id="nsr-unit-in" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold mb-3 shadow-inner" placeholder="單位名稱" title="單位名稱" />
+                        <input id="nsr-unit-in" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold mb-3 shadow-inner" placeholder="單位名稱" />
                         
-                        <label className="text-[10px] font-black text-slate-400 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-user-in">申請人員</label>
-                        <input id="nsr-user-in" value={formData.user} onChange={e => setFormData({...formData, user: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold shadow-inner mb-3" placeholder="姓名#分機" title="人員姓名與分機" />
+                        <label className="text-[10px] font-black text-slate-400 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-user-in">申請人員 (物理自動化)</label>
+                        <input id="nsr-user-in" value={formData.user} onChange={e => handleUserChange(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold shadow-inner mb-3 text-blue-700" placeholder="姓名 分機 (空格自動帶入#)" title="姓名#分機" />
                         
                         <label className="text-[10px] font-black text-blue-600 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-reason-in">施工事由</label>
                         <textarea id="nsr-reason-in" value={formData.reason} onChange={e => setFormData({...formData, reason: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold shadow-inner min-h-[100px]" placeholder="詳細描述施工原因與位置..." title="施工事由" />
@@ -326,7 +324,6 @@ export default function NsrAdminPage() {
                                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${item.status === '已派工' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-slate-200 text-slate-500'}`}>{item.status}</span>
                                 <div className="flex gap-2 items-center">
                                     <span className="font-mono text-[10px] font-black text-slate-300">{item.id}</span>
-                                    {/* 🚀 管理者物理刪除 */}
                                     <button onClick={() => setConfirmDeleteId(item.id)} className="w-7 h-7 rounded-full bg-white text-red-500 flex items-center justify-center shadow-sm hover:bg-red-500 hover:text-white transition-all">
                                         <span className="material-symbols-outlined text-[16px]">delete</span>
                                     </button>
@@ -356,7 +353,7 @@ export default function NsrAdminPage() {
                         <div className="py-16 text-center text-slate-300 font-black italic uppercase tracking-widest text-xs opacity-50">目前無待算帳案件</div>
                     ) : (
                         finishPool.map(item => (
-                            <div key={item.id} className="bg-emerald-50/30 p-8 rounded-[2.5rem] border border-emerald-100 flex justify-between items-center group hover:bg-emerald-50 transition-all shadow-sm">
+                            <div key={item.id} className="bg-emerald-50/30 p-8 rounded-[2.5rem] border border-emerald-100 flex justify-between items-center group hover:bg-emerald-50 transition-all">
                                 <div>
                                     <div className="flex items-center gap-4 mb-2">
                                         <span className="font-black text-slate-800 text-xl tracking-tight">{item.unit}</span>
