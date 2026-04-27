@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { ADMIN_CREDENTIALS_LIST } from "@/lib/constants";
@@ -8,12 +8,10 @@ import { ADMIN_CREDENTIALS_LIST } from "@/lib/constants";
 /**
  * ==========================================
  * 檔案：src/app/page.tsx
- * 狀態：V65.0 旗艦視覺與技術完全體 (對照 V2.6 嚴格版邏輯)
+ * 狀態：V2.6 嚴格語法防護版 (移除冗餘 eslint-disable)
  * 物理職責：
- * 1. 視覺中樞：還原 ALink 專屬呼吸球背景、毛玻璃卡片與霓虹效果。
- * 2. 登入分流：執行管理者 (uid) 與廠商的身分物理驗證。
- * 3. 技術防護：100% 保留強型別轉型與 0 ESLint 抑制指令。
- * 4. 無障礙修復：符合 axe/forms 物理 ID 關聯規範。
+ * 1. 執行登入分流與本地密碼驗證。
+ * 2. 維持 100% 嚴格語法保護，並消除未使用之抑制指令。
  * ==========================================
  */
 
@@ -26,25 +24,16 @@ interface VendorDbRow {
 export default function LoginPage() {
   const router = useRouter();
 
-  // --- 1. UI 與交互核心狀態 ---
+  // --- 狀態管理 ---
   const [loginType, setLoginType] = useState<"admin" | "vendor" | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [toasts, setToasts] = useState<{ id: number; msg: string; type: "error" | "info" | "success" }[]>([]);
-
-  // --- 2. 管理者與廠商數據狀態 ---
   const [adminAccount, setAdminAccount] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [vendors, setVendors] = useState<{name: string, status: string}[]>([]);
   const [selectedVendor, setSelectedVendor] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const showToast = useCallback((msg: string, type: "error" | "info" | "success" = "info") => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, msg, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
-  }, []);
-
-  // --- 3. 初始化：從 Supabase 物理抓取廠商名單 (對照 V2.6 邏輯) ---
+  // --- 初始化：從 Supabase 物理抓取廠商名單 ---
   useEffect(() => {
     const fetchVendors = async () => {
       try {
@@ -68,30 +57,28 @@ export default function LoginPage() {
         setVendors(mappedData);
       } catch (err: unknown) {
         console.error("廠商名單同步失敗:", err instanceof Error ? err.message : String(err));
-        showToast("雲端數據庫同步異常", "error");
       }
     };
     fetchVendors();
-  }, [showToast]);
+  }, []);
 
-  // --- 4. 登入邏輯：多帳戶迴圈物理驗證 ---
+  // --- 登入邏輯：多帳戶迴圈物理驗證 ---
   const handleAdminLogin = () => {
     setErrorMsg("");
     if (!adminAccount.trim() || !adminPassword.trim()) {
-      setErrorMsg("物理權限不足：請輸入帳號密碼");
+      setErrorMsg("請輸入完整的帳號與密碼");
       return;
     }
 
     setIsLoading(true);
     
-    // 物理驗證：精確比對 constants.ts 中的 uid 欄位
-    const matchedAdmin = ADMIN_CREDENTIALS_LIST.find(
+    // 物理驗證：比對 constants.ts 中的帳密陣列
+    const isValidAdmin = ADMIN_CREDENTIALS_LIST.some(
       (admin) => admin.uid === adminAccount && admin.password === adminPassword
     );
 
-    if (matchedAdmin) {
+    if (isValidAdmin) {
       sessionStorage.setItem("asset_link_admin_auth", "true");
-      sessionStorage.setItem("asset_link_admin_name", matchedAdmin.uid);
       router.push("/admin");
     } else {
       setErrorMsg("🚫 驗證失敗：帳號或密碼錯誤。");
@@ -99,7 +86,7 @@ export default function LoginPage() {
     }
   };
 
-  // --- 5. 登入邏輯：廠商通道 ---
+  // --- 登入邏輯：廠商通道 ---
   const handleVendorLogin = () => {
     setErrorMsg("");
     if (!selectedVendor) {
@@ -108,193 +95,171 @@ export default function LoginPage() {
     }
     const vendorData = vendors.find(v => v.name === selectedVendor);
     if (vendorData?.status === '停權' || vendorData?.status === '停用') {
-       setErrorMsg("⚠️ 您的帳號已被物理封鎖，請聯繫資訊室。");
-       showToast("廠商身分受限", "error");
+       setErrorMsg("⚠️ 您的帳號已被凍結，請聯繫資訊室。");
        return;
     }
 
     setIsLoading(true);
     sessionStorage.setItem("asset_link_vendor", selectedVendor);
-    router.push(`/keyin?v=${encodeURIComponent(selectedVendor)}`);
+    router.push("/keyin");
   };
 
   return (
-    <div className="bg-[#f8fafc] min-h-screen flex items-center justify-center font-sans text-slate-900 antialiased overflow-hidden relative p-6">
+    <div className="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6 font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC','PingFang_TC',system-ui,sans-serif] text-[#191c1e] antialiased">
       
-      {/* 🚀 物理視覺還原：全域設計鎖定 */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        .glass-panel { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 20px 50px -15px rgba(0,0,0,0.08); }
-        .login-input { width: 100%; background: rgba(241, 245, 249, 0.6); border: 2px solid transparent; border-radius: 1.25rem; padding: 16px 20px; font-weight: 700; transition: all 0.3s; outline: none; }
-        .login-input:focus { background: white; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1); }
-        .neon-text { text-shadow: 0 0 10px rgba(37, 99, 235, 0.2); }
-      `}} />
+      {/* 物理背景裝飾 */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-primary-fixed-dim/20 rounded-full blur-[120px] mix-blend-multiply"></div>
+        <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-secondary-fixed/30 rounded-full blur-[100px] mix-blend-multiply"></div>
+      </div>
 
-      {/* 🚀 ALink 旗艦呼吸背景球 */}
-      <div className="fixed z-0 blur-[120px] opacity-15 rounded-full pointer-events-none bg-blue-600 w-[700px] h-[700px] -top-64 -left-64 animate-pulse"></div>
-      <div className="fixed z-0 blur-[120px] opacity-10 rounded-full pointer-events-none bg-emerald-400 w-[600px] h-[600px] bottom-0 right-0 animate-pulse delay-700"></div>
-      <div className="fixed z-0 blur-[100px] opacity-10 rounded-full pointer-events-none bg-indigo-500 w-[400px] h-[400px] top-1/2 left-1/2 -translate-x-1/2 animate-bounce duration-[10s]"></div>
-
-      {/* 🚀 登入中樞卡片 */}
-      <main className="w-full max-w-[460px] glass-panel rounded-[3.5rem] p-12 lg:p-16 relative z-10 animate-in fade-in zoom-in-95 duration-700">
-        
-        {/* Logo 與標題 */}
-        <div className="text-center mb-12">
-            <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/20 rotate-3 hover:rotate-0 transition-transform duration-500">
-                <span className="material-symbols-outlined text-white text-4xl">token</span>
-            </div>
-            <h1 className="text-4xl font-black tracking-tighter bg-gradient-to-br from-blue-700 to-blue-500 bg-clip-text text-transparent neon-text">
-                ALink
-            </h1>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] mt-3">預約裝機與 IP 申請中樞</p>
+      <div className="relative z-10 w-full max-w-[420px]">
+        {/* 標題區 */}
+        <div className="text-center mb-10">
+          <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-primary/20 rotate-3 transition-transform hover:rotate-0 duration-500">
+            <span className="material-symbols-outlined text-white text-4xl">token</span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tighter mb-2">A-L-I-N-K <span className="text-primary"></span></h1>
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">預約裝機/IP申請系統</p>
         </div>
 
-        {/* 頻道選擇按鈕 */}
-        {!loginType ? (
-          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-            <button 
-              onClick={() => setLoginType("vendor")}
-              title="廠商預約申請入口"
-              className="w-full group bg-white border border-slate-100 rounded-[2rem] p-6 flex items-center justify-between hover:border-blue-200 transition-all shadow-lg active:scale-95"
-            >
-              <div className="flex items-center gap-5 text-left">
-                <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-500 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
-                  <span className="material-symbols-outlined text-3xl">storefront</span>
+        {/* 登入表單區塊 */}
+        <div className="bg-white/70 backdrop-blur-3xl rounded-[2.5rem] p-8 shadow-2xl border border-white/50">
+          
+          {/* 頻道選擇按鈕 */}
+          {!loginType && (
+            <div className="space-y-4">
+              {/* 🚀 防護點：確保事件回傳具備大括號，消滅 unused-expressions */}
+              <button 
+                onClick={() => { setLoginType("vendor"); }}
+                className="w-full p-5 rounded-2xl bg-white border-2 border-slate-100 hover:border-primary hover:bg-blue-50/50 transition-all group flex items-center gap-4 text-left"
+              >
+                <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                  <span className="material-symbols-outlined text-slate-500 group-hover:text-primary">storefront</span>
                 </div>
                 <div>
                   <h3 className="font-black text-slate-800 text-lg">廠商預約申請</h3>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Vendor Portal</p>
+                  <p className="text-[10px] font-bold text-slate-400">Vendor Application Portal</p>
                 </div>
-              </div>
-            </button>
+              </button>
 
-            <button 
-              onClick={() => setLoginType("admin")}
-              title="資訊室管理者登入"
-              className="w-full group bg-slate-900 text-white rounded-[2rem] p-6 flex items-center justify-between hover:bg-blue-600 transition-all shadow-xl active:scale-95"
-            >
-              <div className="flex items-center gap-5 text-left">
-                <div className="w-14 h-14 rounded-2xl bg-white/10 text-white/50 flex items-center justify-center group-hover:bg-white group-hover:text-blue-600 transition-all">
-                  <span className="material-symbols-outlined text-3xl">admin_panel_settings</span>
+              <button 
+                onClick={() => { setLoginType("admin"); }}
+                className="w-full p-5 rounded-2xl bg-white border-2 border-slate-100 hover:border-slate-900 hover:bg-slate-900 transition-all group flex items-center gap-4 text-left"
+              >
+                <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+                  <span className="material-symbols-outlined text-slate-500 group-hover:text-white">admin_panel_settings</span>
                 </div>
                 <div>
-                  <h3 className="font-black text-white text-lg">資訊室管理者</h3>
-                  <p className="text-[10px] font-bold text-white/40 uppercase">Management Hub</p>
+                  <h3 className="font-black text-slate-800 text-lg group-hover:text-white transition-colors">資訊室管理者登入</h3>
+                  <p className="text-[10px] font-bold text-slate-400 group-hover:text-white/60 transition-colors">Admin Management Hub</p>
                 </div>
-              </div>
-            </button>
-          </div>
-        ) : (
-          <div className="animate-in fade-in duration-500">
-            <button 
-              onClick={() => { setLoginType(null); setErrorMsg(""); setAdminPassword(""); setAdminAccount(""); }}
-              className="flex items-center gap-2 text-slate-400 font-black text-xs uppercase tracking-widest mb-8 hover:text-blue-600 transition-colors"
-            >
-              <span className="material-symbols-outlined text-sm">arrow_back</span> 返回身分選取
-            </button>
+              </button>
+            </div>
+          )}
 
-            {/* A. 管理者登入表單 (Axe Fix) */}
-            {loginType === "admin" && (
-              <div className="space-y-6">
+          {/* 錯誤提示 */}
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 text-error rounded-2xl border border-red-100 flex items-start gap-3 animate-bounce">
+              <span className="material-symbols-outlined text-lg">error</span>
+              <p className="text-[11px] font-bold leading-tight pt-0.5">{errorMsg}</p>
+            </div>
+          )}
+
+          {/* 管理者登入表單 */}
+          {loginType === "admin" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3 mb-6">
+                 <button 
+                   onClick={() => { setLoginType(null); setErrorMsg(""); setAdminPassword(""); setAdminAccount(""); }} 
+                   className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"
+                 >
+                   <span className="material-symbols-outlined text-sm">arrow_back</span>
+                 </button>
+                 <h2 className="text-lg font-black text-slate-800">管理者登入</h2>
+              </div>
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  <label htmlFor="admin-id-login" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">管理者帳號 (UID)</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理帳號</label>
                   <input 
-                    id="admin-id-login"
+                    type="text" 
                     title="管理帳號"
                     aria-label="管理帳號"
-                    type="text" 
-                    value={adminAccount} 
-                    onChange={e => setAdminAccount(e.target.value)}
-                    placeholder="請輸入帳號" 
-                    className="login-input"
-                    onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
+                    value={adminAccount}
+                    onChange={(e) => { setAdminAccount(e.target.value); }}
+                    placeholder="請輸入帳號"
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-slate-900 focus:bg-white transition-all placeholder:text-slate-300"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { handleAdminLogin(); } }}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="admin-pwd-login" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">驗證密碼</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理密碼</label>
                   <input 
-                    id="admin-pwd-login"
-                    title="驗證密碼"
-                    aria-label="驗證密碼"
                     type="password" 
+                    title="管理密碼"
+                    aria-label="管理密碼"
                     value={adminPassword}
-                    onChange={e => setAdminPassword(e.target.value)}
-                    placeholder="••••••••" 
-                    className="login-input"
-                    onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
+                    onChange={(e) => { setAdminPassword(e.target.value); }}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-slate-900 focus:bg-white transition-all placeholder:text-slate-300 tracking-widest"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { handleAdminLogin(); } }}
                   />
                 </div>
-                {errorMsg && <p className="text-red-500 text-xs font-black text-center animate-bounce">{errorMsg}</p>}
-                <button 
-                  onClick={handleAdminLogin}
-                  disabled={isLoading}
-                  className="w-full bg-blue-600 text-white rounded-[2rem] py-5 font-black uppercase tracking-[0.3em] shadow-2xl shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-3"
-                >
-                  {isLoading ? <span className="material-symbols-outlined animate-spin">refresh</span> : '進入行政管理中樞'}
-                </button>
               </div>
-            )}
+              <button 
+                onClick={() => { handleAdminLogin(); }}
+                disabled={isLoading}
+                className="w-full bg-slate-900 text-white rounded-2xl py-4 mt-2 font-black uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '登入系統'}
+              </button>
+            </div>
+          )}
 
-            {/* B. 廠商登入表單 (Axe Fix) */}
-            {loginType === "vendor" && (
-              <div className="space-y-8">
-                <div className="space-y-3">
-                  <label htmlFor="vendor-select-login" className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">選取駐點廠商</label>
-                  <div className="relative">
-                    <select 
-                      id="vendor-select-login"
-                      title="廠商名稱選取"
-                      aria-label="廠商名稱選取"
-                      value={selectedVendor}
-                      onChange={e => setSelectedVendor(e.target.value)}
-                      className="login-input appearance-none pr-12"
-                    >
-                      <option value="" disabled>
-                        {vendors.length === 0 ? "正在物理掃描數據庫..." : "請選擇您的廠商名稱..."}
+          {/* 廠商登入表單 */}
+          {loginType === "vendor" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3 mb-6">
+                 <button 
+                   onClick={() => { setLoginType(null); setErrorMsg(""); }} 
+                   className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"
+                 >
+                   <span className="material-symbols-outlined text-sm">arrow_back</span>
+                 </button>
+                 <h2 className="text-lg font-black text-slate-800">選擇駐點廠商</h2>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">廠商名稱 (Vendor ID)</label>
+                <div className="relative">
+                  <select 
+                    value={selectedVendor}
+                    onChange={(e) => { setSelectedVendor(e.target.value); }}
+                    title="選擇廠商"
+                    aria-label="選擇廠商"
+                    className="w-full appearance-none bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-primary focus:bg-white transition-all"
+                  >
+                    <option value="" disabled>請選擇您的廠商名稱...</option>
+                    {vendors.map(v => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} {v.status === '停用' || v.status === '停權' ? '(🚫 已停用)' : ''}
                       </option>
-                      {vendors.map(v => (
-                        <option key={v.name} value={v.name}>
-                          {v.name} {v.status === '停用' || v.status === '停權' ? '(🚫 已停用)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">expand_more</span>
-                  </div>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
                 </div>
-                {errorMsg && <p className="text-red-500 text-xs font-black text-center">{errorMsg}</p>}
-                <button 
-                  onClick={handleVendorLogin}
-                  disabled={isLoading || vendors.length === 0}
-                  className="w-full bg-slate-900 text-white rounded-[2rem] py-5 font-black uppercase tracking-[0.3em] shadow-xl hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center gap-3"
-                >
-                  {isLoading ? <span className="material-symbols-outlined animate-spin">refresh</span> : '進入作業區'}
-                </button>
               </div>
-            )}
-          </div>
-        )}
-      </main>
+              <button 
+                onClick={() => { handleVendorLogin(); }}
+                disabled={isLoading || vendors.length === 0}
+                className="w-full bg-primary text-white rounded-2xl py-4 font-black uppercase tracking-widest hover:bg-primary/90 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '進入作業區'}
+              </button>
+            </div>
+          )}
 
-      <footer className="fixed bottom-10 text-center z-10">
-        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-1">Asset-Link Cyber Protection Unit</p>
-        <p className="text-[9px] font-bold text-slate-400">© 2026 中國醫藥大學附設醫院 資訊室 物理監製</p>
-      </footer>
-
-      {/* 🚀 全域強同步遮罩 */}
-      {isLoading && (
-        <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-white/80 backdrop-blur-2xl">
-          <div className="w-20 h-20 border-[8px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-8 shadow-2xl"></div>
-          <p className="text-blue-600 font-black tracking-[0.8em] uppercase text-xs animate-pulse neon-text">身分權限物理對正中...</p>
         </div>
-      )}
-
-      {/* 🚀 通知氣泡 */}
-      <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[4000] flex flex-col gap-4 pointer-events-none w-full max-w-sm px-6">
-        {toasts.map(t => (
-          <div key={t.id} className={`px-10 py-6 rounded-[2.5rem] shadow-2xl font-black text-xs animate-in slide-in-from-bottom-4 flex items-center gap-5 border border-white/10 text-white backdrop-blur-2xl ${t.type === "error" ? "bg-red-600/90" : t.type === "success" ? "bg-emerald-600/90" : "bg-slate-900/90"}`}>
-            <span className="material-symbols-outlined text-2xl">{t.type === 'error' ? 'report' : t.type === 'success' ? 'verified' : 'info'}</span>
-            <span className="tracking-[0.15em]">{t.msg}</span>
-          </div>
-        ))}
+        <p className="text-center text-[10px] font-bold text-slate-400 mt-8">© 2026 ERI Information Tech.</p>
       </div>
     </div>
   );
