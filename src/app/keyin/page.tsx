@@ -3,16 +3,17 @@
 import React, { useState, useEffect, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { submitAssetBatch, getVendorProgress, vendorConfirmAsset } from "@/lib/actions/assets";
-import { formatFloor, formatMAC } from "@/lib/logic/formatters";
+import { formatFloor } from "@/lib/logic/formatters";
 
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V5.7 旗艦完全體 (保留 V5.1 原始 UI + 物理修正)
+ * 狀態：V6.0 旗艦終極完全體 (物理還原 + MAC 強制格式化 + 單筆全資料)
  * 物理職責：
- * 1. 實裝「載入修正」：還原退回案件並物理覆蓋舊紀錄。
- * 2. 實裝「確認結案」：結案遷移至歷史大數據，支援全資料顯示。
- * 3. 物理修復：TS18047 (null guard) 與 axe/forms (Accessibility) 報警。
+ * 1. 完整保留 V5.1 原始 UI 布局與玻璃擬態樣式。
+ * 2. MAC 格式化：每 2 碼自動帶入 ":"，限制全大寫 A-F 與 0-9。
+ * 3. 進度查詢：支援點擊展開查看單筆案件之「全資料欄位」。
+ * 4. 錯誤修復：解決 TS18047 searchParams 守衛與 axe/forms 標籤關聯。
  * ==========================================
  */
 
@@ -68,13 +69,10 @@ function KeyinContent() {
   const [isProgressOpen, setIsProgressOpen] = useState(false);
   const [progressData, setProgressData] = useState<ProgressRecord[]>([]);
   const [isProgressLoading, setIsProgressLoading] = useState(false);
+  const [expandedSn, setExpandedSn] = useState<string | null>(null);
 
   const [confirmDialog, setConfirmDialog] = useState({ 
-    isOpen: false, 
-    title: "", 
-    message: "", 
-    type: "info" as "danger" | "info", 
-    onConfirm: () => {} 
+    isOpen: false, title: "", message: "", type: "info" as "danger" | "info", onConfirm: () => {} 
   });
 
   const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
@@ -83,11 +81,27 @@ function KeyinContent() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
+  /**
+   * 🚀 MAC 物理格式化邏輯 (標準 IEEE 802)
+   * 規則：輸入 2 碼自動補 ":"，僅限大寫 A-F 與 數字 0-9。
+   */
+  const handleMacInput = (val: string) => {
+    // 1. 強制轉大寫並過濾非 16 進位字元
+    const cleaned = val.toUpperCase().replace(/[^0-9A-F]/g, '');
+    // 2. 物理插入冒號
+    let formatted = "";
+    for (let i = 0; i < cleaned.length && i < 12; i++) {
+        if (i > 0 && i % 2 === 0) formatted += ":";
+        formatted += cleaned[i];
+    }
+    return formatted.slice(0, 17);
+  };
+
   // ----------------------------------------------------------------
-  // 初始化與參數讀取 (加入 TS18047 物理修復)
+  // 初始化：身分、日期、單號、草稿載入 (TS18047 物理修復)
   // ----------------------------------------------------------------
   useEffect(() => {
-    if (!searchParams) return; // 🚀 物理修復：TS18047 守衛
+    if (!searchParams) return; 
     let mounted = true;
     const timer = setTimeout(() => {
       if (!mounted) return;
@@ -113,9 +127,13 @@ function KeyinContent() {
             setSelectedDate(draft.date || todayStr);
             setArea(draft.area || "A"); setAreaOther(draft.areaOther || "");
             setFloor(draft.floor || ""); setUnit(draft.unit || ""); setApplicant(draft.applicant || "");
-            if (draft.rows && draft.rows.length > 0) { setRows(draft.rows); draftLoaded = true; showToast("已載入草稿", "info"); }
+            if (draft.rows && draft.rows.length > 0) { 
+                setRows(draft.rows); 
+                draftLoaded = true; 
+                showToast("已載入暫存草稿", "info"); 
+            }
           }
-        } catch (err: unknown) { console.warn(err); }
+        } catch (err: unknown) { console.warn("Draft Load Error:", err); }
       }
       if (!draftLoaded) {
         setSelectedDate(todayStr);
@@ -125,12 +143,18 @@ function KeyinContent() {
     return () => { mounted = false; clearTimeout(timer); };
   }, [searchParams, showToast]);
 
+  // 物理儲存草稿機制
   useEffect(() => {
     if (vendorName && vendorName !== "身分對沖中..." && vendorName !== "訪客") {
-      try { localStorage.setItem(`AL_KEYIN_V0_${vendorName}`, JSON.stringify({ date: selectedDate, area, areaOther, floor, unit, applicant, rows })); } catch (err: unknown) { console.warn(err); }
+      try { 
+          localStorage.setItem(`AL_KEYIN_V0_${vendorName}`, JSON.stringify({ 
+              date: selectedDate, area, areaOther, floor, unit, applicant, rows 
+          })); 
+      } catch (err: unknown) { console.warn(err); }
     }
   }, [selectedDate, area, areaOther, floor, unit, applicant, rows, vendorName]);
 
+  // V5.1 原始日曆邏輯
   const renderCalendarDays = () => {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
@@ -142,7 +166,7 @@ function KeyinContent() {
       elements.push(
         <div key={`day-${j}`} 
              onClick={() => setSelectedDate(dateStr)} 
-             className={`h-10 flex items-center justify-center text-sm rounded-xl cursor-pointer font-bold ${dateStr === selectedDate ? 'bg-[#2563eb] text-white shadow-md shadow-blue-500/30' : 'text-slate-500 hover:bg-blue-50'}`}>
+             className={`h-10 flex items-center justify-center text-sm rounded-xl cursor-pointer font-bold transition-all ${dateStr === selectedDate ? 'bg-[#2563eb] text-white shadow-md shadow-blue-500/30 scale-110' : 'text-slate-500 hover:bg-blue-50'}`}>
           {j}
         </div>
       );
@@ -155,67 +179,50 @@ function KeyinContent() {
     try {
       const vendorHistory = await getVendorProgress(vendorName);
       setProgressData(vendorHistory as ProgressRecord[]);
-    } catch (err: unknown) { console.error(err); showToast("無法讀取進度", "error"); } finally { setIsProgressLoading(false); }
+    } catch (err: unknown) { showToast("無法讀取全資料進度", "error"); } finally { setIsProgressLoading(false); }
   };
 
   const handleLoadRejected = (item: ProgressRecord) => {
     setConfirmDialog({
-      isOpen: true,
-      title: "載入退回案件修正",
-      message: "確定要將此案件載入至左側表單？目前的表單內容將被覆蓋。",
-      type: "danger",
+      isOpen: true, title: "載入案件修正", message: "確定載入此退回案件？將物理覆蓋目前的填報表單。", type: "danger",
       onConfirm: () => {
-        setVdsId(item.formId);
-        setSelectedDate(item.date);
+        setVdsId(item.formId); setSelectedDate(item.date);
         const validAreas = ["A","B","C","D","E","G","H","I","K","T"];
         if (validAreas.includes(item.area)) { setArea(item.area); setAreaOther(""); } else { setArea("OTHER"); setAreaOther(item.area); }
-        setFloor(item.floor);
-        setUnit(item.unit);
-        const parts = item.applicantFull.split('#');
-        setApplicant(parts[0] || "");
+        setFloor(item.floor); setUnit(item.unit);
+        const parts = item.applicantFull.split('#'); setApplicant(parts[0] || "");
         const isReplace = item.remark.includes("[REPLACE]");
-        const oldInfo = isReplace ? item.remark.replace("[REPLACE] 舊機汰換。", "").trim() : "";
-          
-        setRows([{
-          id: Date.now(),
-          model: item.model,
-          sn: item.sn,
-          originalSn: item.sn,   
-          mac1: item.mac1,
-          mac2: item.mac2,
-          ext: parts[1] || "",
-          oldInfo: oldInfo,
-          type: isReplace ? "REPLACE" : "NEW"
+        setRows([{ 
+            id: Date.now(), model: item.model, sn: item.sn, originalSn: item.sn, 
+            mac1: item.mac1, mac2: item.mac2, ext: parts[1] || "", 
+            oldInfo: isReplace ? item.remark.replace("[REPLACE] 舊機汰換。", "").trim() : "", 
+            type: isReplace ? "REPLACE" : "NEW" 
         }]);
         setIsProgressOpen(false);
-        showToast("已載入表單，請修正後重新提交", "success");
+        showToast("已載入表單資料，請修正後重新提交", "success");
       }
     });
   };
 
   const handleConfirmAsset = async (sn: string) => {
     setConfirmDialog({
-      isOpen: true, title: "物理結案確認",
-      message: "確認配發之 IP 與名稱正確無誤並正式結案？確認後紀錄將物理遷移至歷史庫。",
-      type: "info",
+      isOpen: true, title: "物理結案確認", message: "確認配發之 IP 與名稱正確無誤？確認後將正式遷移至歷史庫歸檔。", type: "info",
       onConfirm: async () => {
         setIsLoading(true); setLoaderText("結案遷移入庫中...");
         try {
           await vendorConfirmAsset(sn);
-          showToast("✅ 已成功確認並結案，資料歸檔至大數據庫", "success");
+          showToast("✅ 已成功結案存檔", "success");
           handleOpenProgress();   
-        } catch (err: unknown) {
-          showToast("結案失敗：" + (err instanceof Error ? err.message : String(err)), "error");
-        } finally { setIsLoading(false); }
+        } catch (err: unknown) { showToast("結案失敗，請檢查網路", "error"); } finally { setIsLoading(false); }
       }
     });
   };
 
   const clearAll = () => {
     setConfirmDialog({
-      isOpen: true, title: "清空表單", message: "確定清空目前填報的設備？資料將無法復原。", type: "danger",
+      isOpen: true, title: "清空表單", message: "確定要刪除目前所有填寫內容嗎？資料無法復原。", type: "danger",
       onConfirm: () => {
-        try { localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`); } catch(err: unknown) { console.warn("清理草稿失敗", err); }
+        try { localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`); } catch(err: unknown) { console.warn(err); }
         setUnit(""); setApplicant(""); setFloor(""); setArea("A"); setAreaOther("");
         setRows([{ id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }]);
       }
@@ -225,15 +232,16 @@ function KeyinContent() {
   const handleSubmit = async () => {
     if (!unit.trim() || !applicant.trim() || !floor.trim()) return showToast("請完整填寫 單位、姓名 及 樓層", "error");
     if (rows.length === 0) return showToast("請至少新增一筆設備", "error");
+    
     const macRegex = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
     for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
-        if (!r.mac1 && !r.mac2) return showToast(`第 ${i + 1} 項必須填寫至少一組 MAC`, "error");
+        if (!r.model || !r.sn) return showToast(`第 ${i + 1} 項設備資訊不全`, "error");
+        if (!r.mac1 && !r.mac2) return showToast(`第 ${i + 1} 項必須提供一組 MAC`, "error");
         if (r.mac1 && !macRegex.test(r.mac1)) return showToast(`第 ${i + 1} 項主要 MAC 格式異常`, "error");
-        if (r.mac2 && !macRegex.test(r.mac2)) return showToast(`第 ${i + 1} 項無線 MAC 格式異常`, "error");
     }
 
-    setIsLoading(true); setLoaderText("數據封裝對沖中...");
+    setIsLoading(true); setLoaderText("數據封裝傳輸中...");
     const baseApplicantName = applicant.split('#')[0].trim();
     const finalArea = area === 'OTHER' ? areaOther.trim() : area;
 
@@ -241,7 +249,7 @@ function KeyinContent() {
       form_id: vdsId, install_date: selectedDate, area: finalArea, floor: formatFloor(floor), unit: unit.trim(),
       applicant: r.ext.trim() ? `${baseApplicantName}#${r.ext.trim()}` : baseApplicantName,
       model: r.model.trim(), sn: r.sn ? r.sn.toUpperCase().trim() : "", original_sn: r.originalSn || "",
-      mac1: r.mac1 ? formatMAC(r.mac1) : "", mac2: r.mac2 ? formatMAC(r.mac2) : "",
+      mac1: r.mac1, mac2: r.mac2,
       remark: (r.type === "REPLACE" ? "[REPLACE] 舊機汰換。" : "資產新購。") + (r.oldInfo ? r.oldInfo.trim() : ""),
       vendor: vendorName, status: "待核定"
     }));
@@ -249,72 +257,75 @@ function KeyinContent() {
     try {
       const res = await submitAssetBatch(batchData);
       if (res.success) {
-        try { localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`); } catch(err: unknown) { console.warn("清理草稿失敗", err); }
-        showToast("✅ 預約提交成功，即將重置...", "success");
+        localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`);
+        showToast("✅ 預約申請提交成功", "success");
         setTimeout(() => window.location.reload(), 2000);
       }
     } catch (err: unknown) { 
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      showToast("傳輸中斷: " + errorMsg, "error"); 
-      console.error("提交異常:", err);
-    } finally { 
-      setIsLoading(false); 
-    }
+        showToast("傳輸中斷，請稍後再試", "error"); 
+    } finally { setIsLoading(false); }
   };
 
   return (
-    <div className="bg-[#f7f9fb] min-h-screen text-[#191c1e] font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC','PingFang_TC',system-ui,sans-serif] text-[10.5px] antialiased tracking-tight overflow-x-hidden">
+    <div className="bg-[#f7f9fb] min-h-screen text-[#191c1e] font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC',system-ui] text-[10.5px] antialiased tracking-tight overflow-x-hidden">
       <style dangerouslySetInnerHTML={{ __html: `
-        .glass-card { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 10px 30px rgba(0, 88, 188, 0.05); }
+        .glass-card { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 10px 30px rgba(0, 88, 188, 0.05); }
         .saas-label { font-size: 10.5px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: block; }
         .compact-input { width: 100%; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 12px; padding: 10px 14px; font-size: 12px; font-weight: 700; color: #334155; transition: all 0.3s ease; }
         .compact-input:focus { background: #ffffff; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); outline: none; }
         .type-toggle { display: flex; padding: 4px; background: rgba(241, 245, 249, 0.6); border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); }
         .type-btn { flex: 1; padding: 8px 0; font-size: 11px; font-weight: 800; color: #94a3b8; border-radius: 8px; transition: all 0.3s ease; }
         .type-btn.active { background: #ffffff; color: #2563eb; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .detail-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #f1f5f9; padding: 6px 0; }
+        .detail-key { font-weight: 800; color: #94a3b8; }
+        .detail-val { font-weight: 900; color: #334155; }
       `}} />
 
+      {/* 發光裝飾球 */}
       <div className="fixed z-[-1] blur-[80px] opacity-25 rounded-full pointer-events-none bg-blue-600 w-[500px] h-[500px] -top-48 -left-48 animate-pulse"></div>
       <div className="fixed z-[-1] blur-[80px] opacity-25 rounded-full pointer-events-none bg-cyan-400 w-[400px] h-[400px] top-1/2 -right-32 animate-pulse [animation-delay:2s]"></div>
 
       <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} aria-label="打開選單" className="lg:hidden fixed top-4 left-4 z-[110] p-2.5 bg-white/70 backdrop-blur-md rounded-xl border border-white/60 shadow-sm active:scale-90 transition-transform">
-          <span className="material-symbols-outlined text-primary text-blue-600">menu</span>
+          <span className="material-symbols-outlined text-blue-600">menu</span>
       </button>
 
+      {/* 物理還原：側邊欄 */}
       <nav className={`fixed left-0 top-0 bottom-0 w-64 border-r border-white/40 bg-white/70 backdrop-blur-[30px] flex flex-col h-full py-6 px-4 z-[100] shadow-xl shadow-blue-900/5 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
           <div className="mb-10 px-4 mt-8 lg:mt-0">
               <span className="text-2xl font-black bg-gradient-to-r from-blue-700 to-blue-500 bg-clip-text text-transparent tracking-tight">Asset-Link</span>
-              <p className="text-xs font-bold text-slate-400 tracking-widest mt-1 uppercase">基礎設施填報 V0.0</p>
+              <p className="text-xs font-bold text-slate-400 tracking-widest mt-1 uppercase">基礎設施端填報 V6.0</p>
           </div>
           <div className="flex flex-col gap-1 flex-1">
               <button onClick={() => setIsSidebarOpen(false)} className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600/10 text-blue-700 rounded-xl border-l-4 border-blue-600 font-bold shadow-sm"><span className="material-symbols-outlined">event_note</span>預約填報</button>
-              <button onClick={handleOpenProgress} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-100/60 hover:translate-x-1 transition-all rounded-xl font-bold group"><span className="material-symbols-outlined group-hover:text-blue-500 transition-colors">history_edu</span>進度與重送</button>
+              <button onClick={handleOpenProgress} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-100/60 hover:translate-x-1 transition-all rounded-xl font-bold group"><span className="material-symbols-outlined group-hover:text-blue-500 transition-colors">manage_search</span>進度與全紀錄</button>
           </div>
           <div className="mt-auto flex flex-col gap-1 border-t border-slate-200/50 pt-4">
-              <button onClick={() => setConfirmDialog({ isOpen: true, title: "安全登出", message: "確定離開？", type: "info", onConfirm: () => router.push("/") })} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-all rounded-xl font-bold"><span className="material-symbols-outlined text-[#ba1a1a]">logout</span>安全登出</button>
+              <button onClick={() => setConfirmDialog({ isOpen: true, title: "安全登出", message: "確定離開目前的錄入系統？", type: "info", onConfirm: () => router.push("/") })} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-all rounded-xl font-bold"><span className="material-symbols-outlined text-[#ba1a1a]">logout</span>安全登出</button>
           </div>
       </nav>
 
+      {/* 物理還原：頂部 Header */}
       <header className="fixed top-0 right-0 lg:left-64 left-0 z-40 flex items-center justify-between px-6 lg:px-8 bg-white/60 backdrop-blur-xl h-16 border-b border-white/50 shadow-sm">
           <div className="flex items-center gap-4 pl-12 lg:pl-0">
-              <div className="tracking-tight text-lg lg:text-xl font-black text-blue-700">物流與調度中樞</div>
+              <div className="tracking-tight text-lg lg:text-xl font-black text-blue-700 uppercase">物流調度錄入中樞</div>
           </div>
           <div className="flex items-center gap-4">
               <div className="flex items-center gap-3 ml-2 lg:border-l lg:pl-4 border-slate-200">
                   <div className="text-right hidden sm:block">
                       <p className="text-xs font-black uppercase tracking-wider">{vendorName}</p>
-                      <p className="text-[10px] text-emerald-600 font-bold">已通過物理驗證</p>
+                      <p className="text-[10px] text-emerald-600 font-bold">已通過物理安全校驗</p>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-blue-200 shadow-sm flex items-center justify-center text-blue-600"><span className="material-symbols-outlined">precision_manufacturing</span></div>
               </div>
           </div>
       </header>
 
+      {/* 主錄入區 */}
       <main className="lg:ml-64 pt-24 px-4 sm:px-8 lg:px-10 pb-12">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
               <div>
                   <h1 className="text-3xl font-black text-blue-900 tracking-tight">設備預約填報</h1>
-                  <p className="text-sm font-bold text-slate-500 mt-1">請輸入裝機資訊與設備詳細參數，系統將自動進行對沖校驗。</p>
+                  <p className="text-sm font-bold text-slate-500 mt-1">請錄入裝機詳細參數與 MAC 位址，系統將進行 16 進位對沖校驗。</p>
               </div>
               <div className="flex gap-3 w-full sm:w-auto">
                   <button onClick={clearAll} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-300 bg-white/50 text-slate-600 font-bold hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"><span className="material-symbols-outlined">delete_sweep</span>清空</button>
@@ -323,31 +334,25 @@ function KeyinContent() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              {/* 日曆與單號 */}
+              {/* 日曆與行政資訊 */}
               <div className="col-span-1 md:col-span-4 space-y-6">
                   <div className="glass-card p-6 sm:p-8 rounded-[2rem]">
                       <div className="flex justify-between items-center mb-6">
                           <h3 className="font-black text-slate-800 flex items-center gap-2 text-base"><span className="material-symbols-outlined text-blue-600">calendar_month</span>裝機日期</h3>
                           <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{new Date().getFullYear()}年 {new Date().getMonth() + 1}月</span>
                       </div>
-
                       <div className="grid grid-cols-7 gap-1 text-center mb-4 text-xs font-bold text-slate-400">
-                          <div className="py-2">日</div><div className="py-2">一</div><div className="py-2">二</div>
-                          <div className="py-2">三</div><div className="py-2">四</div><div className="py-2">五</div><div className="py-2">六</div>
+                          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
                       </div>
                       <div className="grid grid-cols-7 gap-1 text-center mb-4">
                           {renderCalendarDays()}
                       </div>
-
                       <div className="mt-6 pt-6 border-t border-slate-200/50">
-                          <div>
-                              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2 block text-center">VDS 派工單號</span>
-                              <div className="compact-input font-mono text-sm text-center bg-slate-50/50 border-none">{vdsId}</div>
-                          </div>
+                          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2 block text-center">VDS 派工單號</span>
+                          <div className="compact-input font-mono text-sm text-center bg-slate-50/50 border-none">{vdsId}</div>
                       </div>
                   </div>
 
-                  {/* 行政對沖資訊 (Axe 優化) */}
                   <div className="glass-card p-6 sm:p-8 rounded-[2rem]">
                       <h3 className="font-black text-slate-800 flex items-center gap-2 mb-6 text-base"><span className="material-symbols-outlined text-blue-600">apartment</span>行政資訊對沖</h3>
                       <div className="space-y-5">
@@ -371,27 +376,27 @@ function KeyinContent() {
                           </div>
                           <div>
                               <label className="saas-label !text-blue-600" htmlFor="applicant-input">姓名 (G)</label>
-                              <input id="applicant-input" value={applicant} onChange={(e) => setApplicant(e.target.value)} className="compact-input bg-blue-50/30" placeholder="申請人" />
+                              <input id="applicant-input" value={applicant} onChange={(e) => setApplicant(e.target.value)} className="compact-input bg-blue-50/30" placeholder="填報人員" />
                           </div>
                       </div>
                   </div>
               </div>
 
-              {/* 設備清單區 */}
+              {/* 設備清單 */}
               <div className="col-span-1 md:col-span-8">
                   <div className="space-y-5">
                       {rows.map((r, i) => (
                         <div key={r.id} className="glass-card p-6 md:p-7 border-l-[8px] border-l-blue-600 relative animate-in slide-in-from-left-4 duration-300 rounded-[1.8rem]">
                             {rows.length > 1 && (
-                                <button onClick={() => setRows(rows.filter(row => row.id !== r.id))} aria-label="移除設備" className="absolute -top-3 -right-3 w-8 h-8 bg-white text-slate-400 hover:text-white hover:bg-red-500 rounded-full flex items-center justify-center shadow-md border border-slate-100 transition-all">
+                                <button onClick={() => setRows(rows.filter(row => row.id !== r.id))} aria-label="移除此設備" className="absolute -top-3 -right-3 w-8 h-8 bg-white text-slate-400 hover:text-white hover:bg-red-500 rounded-full flex items-center justify-center shadow-md border border-slate-100 transition-all">
                                     <span className="material-symbols-outlined text-sm">close</span>
                                 </button>
                             )}
-                              
+                            
                             {r.originalSn && (
                                 <div className="mb-4 inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg border border-amber-200">
                                     <span className="material-symbols-outlined text-sm">sync_saved_locally</span>
-                                    <span className="text-[10px] font-black uppercase tracking-widest">修正模式: 覆蓋序號 {r.originalSn}</span>
+                                    <span className="text-[10px] font-black uppercase tracking-widest">修正中: 物理覆蓋紀錄 {r.originalSn}</span>
                                 </div>
                             )}
 
@@ -399,8 +404,8 @@ function KeyinContent() {
                                 <div className="col-span-1 md:col-span-4">
                                     <span className="saas-label block">業務性質</span>
                                     <div className="type-toggle">
-                                        <button onClick={() => { const n = [...rows]; n[i].type = "NEW"; setRows(n); }} className={`type-btn ${r.type === 'NEW' ? 'active' : ''}`}>🆕 新購</button>
-                                        <button onClick={() => { const n = [...rows]; n[i].type = "REPLACE"; setRows(n); }} className={`type-btn ${r.type === 'REPLACE' ? 'active !text-orange-600' : ''}`}>🔄 汰換</button>
+                                        <button onClick={() => { const n = [...rows]; n[i].type = "NEW"; setRows(n); }} className={`type-btn ${r.type === 'NEW' ? 'active' : ''}`}>🆕 新購配發</button>
+                                        <button onClick={() => { const n = [...rows]; n[i].type = "REPLACE"; setRows(n); }} className={`type-btn ${r.type === 'REPLACE' ? 'active !text-orange-600' : ''}`}>🔄 舊機汰換</button>
                                     </div>
                                 </div>
                                 <div className="col-span-1 md:col-span-2">
@@ -412,47 +417,47 @@ function KeyinContent() {
                                     <input id={`model-${r.id}`} value={r.model} onChange={(e) => { const n = [...rows]; n[i].model = e.target.value; setRows(n); }} className="compact-input" placeholder="例如: ASUS D700" />
                                 </div>
                                 <div className="col-span-1 md:col-span-12">
-                                    <label className="saas-label !text-red-500" htmlFor={`sn-${r.id}`}>序號 S/N (J)</label>
-                                    <input id={`sn-${r.id}`} value={r.sn} onChange={(e) => { const n = [...rows]; n[i].sn = e.target.value.toUpperCase(); setRows(n); }} className="compact-input font-mono uppercase bg-white/90 text-red-600" maxLength={12} placeholder="點擊掃描或輸入序號" />
+                                    <label className="saas-label !text-red-500" htmlFor={`sn-${r.id}`}>產品序號 S/N (J)</label>
+                                    <input id={`sn-${r.id}`} value={r.sn} onChange={(e) => { const n = [...rows]; n[i].sn = e.target.value.toUpperCase(); setRows(n); }} className="compact-input font-mono uppercase bg-white/90 text-red-600" maxLength={12} placeholder="點擊掃描或手動輸入序號" />
                                 </div>
                                   
                                 {r.type === "REPLACE" && (
                                   <div className="col-span-1 md:col-span-12 animate-in fade-in">
                                       <div className="p-4 bg-amber-50/40 rounded-2xl border border-amber-200/50">
                                           <label className="saas-label !text-amber-700 italic" htmlFor={`old-${r.id}`}>原舊機資訊 (以便封存)</label>
-                                          <input id={`old-${r.id}`} value={r.oldInfo} onChange={(e) => { const n = [...rows]; n[i].oldInfo = e.target.value; setRows(n); }} className="compact-input" placeholder="請提供舊機 IP、名稱或財產標籤" />
+                                          <input id={`old-${r.id}`} value={r.oldInfo} onChange={(e) => { const n = [...rows]; n[i].oldInfo = e.target.value; setRows(n); }} className="compact-input" placeholder="提供舊機 IP、名稱或財編" />
                                       </div>
                                   </div>
                                 )}
 
                                 <div className="col-span-1 md:col-span-6">
                                     <label className="saas-label !text-blue-500" htmlFor={`mac1-${r.id}`}>主要有線 MAC</label>
-                                    <input id={`mac1-${r.id}`} value={r.mac1} onChange={(e) => { const n = [...rows]; n[i].mac1 = e.target.value.toUpperCase().replace(/[^0-9A-F:-]/g, ''); setRows(n); }} onBlur={(e) => { const n = [...rows]; n[i].mac1 = formatMAC(e.target.value); setRows(n); }} className="compact-input font-mono uppercase" maxLength={17} placeholder="00:11:22..." />
+                                    <input id={`mac1-${r.id}`} value={r.mac1} onChange={(e) => { const n = [...rows]; n[i].mac1 = handleMacInput(e.target.value); setRows(n); }} className="compact-input font-mono uppercase" maxLength={17} placeholder="XX:XX:XX:XX:XX:XX" />
                                 </div>
                                 <div className="col-span-1 md:col-span-6">
                                     <label className="saas-label !text-emerald-500" htmlFor={`mac2-${r.id}`}>無線網卡 MAC</label>
-                                    <input id={`mac2-${r.id}`} value={r.mac2} onChange={(e) => { const n = [...rows]; n[i].mac2 = e.target.value.toUpperCase().replace(/[^0-9A-F:-]/g, ''); setRows(n); }} onBlur={(e) => { const n = [...rows]; n[i].mac2 = formatMAC(e.target.value); setRows(n); }} className="compact-input font-mono uppercase" maxLength={17} placeholder="選填" />
+                                    <input id={`mac2-${r.id}`} value={r.mac2} onChange={(e) => { const n = [...rows]; n[i].mac2 = handleMacInput(e.target.value); setRows(n); }} className="compact-input font-mono uppercase" maxLength={17} placeholder="無則免填" />
                                 </div>
                             </div>
                         </div>
                       ))}
                   </div>
-                  <button onClick={() => setRows([...rows, { id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }])} className="mt-5 w-full py-8 border-2 border-dashed border-blue-300 rounded-[2rem] flex flex-col items-center justify-center text-blue-600 bg-blue-50/40 hover:bg-blue-100 transition-all font-black text-sm group">
+                  <button onClick={() => setRows([...rows, { id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }])} className="mt-5 w-full py-8 border-2 border-dashed border-blue-300 rounded-[2rem] flex flex-col items-center justify-center text-blue-600 bg-blue-50/40 hover:bg-blue-100 transition-all font-black text-sm group shadow-sm">
                       <span className="material-symbols-outlined text-4xl mb-2 group-hover:scale-110 transition-transform">add_circle</span>
-                      增加設備項目
+                      增加設備填報項目
                   </button>
               </div>
           </div>
       </main>
 
-      {/* 進度與歷史全資料彈窗 (全資料核心 UI) */}
+      {/* 🚀 進度與全資料查詢彈窗 (對接單筆全資料功能) */}
       {isProgressOpen && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 fade-enter">
             <div className="glass-card w-full max-w-4xl rounded-[2.5rem] p-6 shadow-2xl flex flex-col max-h-[90vh] bg-white/95">
                 <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white"><span className="material-symbols-outlined text-[26px]">manage_search</span></div>
-                        <div><h2 className="text-xl font-black text-slate-800">申請進度查詢與重送</h2><p className="text-[10px] font-bold text-blue-600 uppercase">{vendorName} 的全紀錄軌跡</p></div>
+                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg"><span className="material-symbols-outlined text-[26px]">manage_search</span></div>
+                        <div><h2 className="text-xl font-black text-slate-800 tracking-tighter">進度查詢與單筆全資料</h2><p className="text-[10px] font-bold text-blue-600 uppercase">{vendorName} 的全紀錄軌跡</p></div>
                     </div>
                     <button onClick={() => setIsProgressOpen(false)} aria-label="關閉" className="w-10 h-10 rounded-full bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-500 flex items-center justify-center transition-colors">
                         <span className="material-symbols-outlined text-xl">close</span>
@@ -461,13 +466,13 @@ function KeyinContent() {
 
                 <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                     {isProgressLoading ? (
-                        <div className="py-24 text-center opacity-60"><div className="w-10 h-10 border-4 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div><p className="text-[11px] font-black uppercase text-slate-600">讀取中...</p></div>
+                        <div className="py-24 text-center opacity-60"><div className="w-10 h-10 border-4 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div><p className="text-[11px] font-black uppercase text-slate-600">載入單筆全資料中...</p></div>
                     ) : progressData.length === 0 ? (
-                        <div className="py-24 text-center opacity-50"><span className="material-symbols-outlined text-5xl mb-3">inbox</span><p className="text-xs font-black uppercase text-slate-500">目前無紀錄</p></div>
+                        <div className="py-24 text-center opacity-50"><span className="material-symbols-outlined text-5xl mb-3">inbox</span><p className="text-xs font-black uppercase text-slate-500">查無紀錄 (僅顯示近一個月安裝)</p></div>
                     ) : (
                         progressData.map((item, idx) => (
-                            <div key={idx} className="bg-slate-50/50 p-5 rounded-2xl flex flex-col transition-all hover:shadow-md border border-slate-200 mb-3 group">
-                                <div className="flex items-center justify-between mb-3">
+                            <div key={idx} className={`p-5 rounded-2xl flex flex-col transition-all border mb-3 group ${expandedSn === item.sn ? 'bg-white shadow-xl border-blue-200' : 'bg-slate-50/50 border-slate-200 hover:shadow-md'}`}>
+                                <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <span className="text-sm font-black text-slate-800 font-mono uppercase tracking-tighter">{item.sn}</span>
                                         <span className={`px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-widest ${
@@ -479,36 +484,58 @@ function KeyinContent() {
                                             {item.status}
                                         </span>
                                     </div>
-                                    <div className="text-[11px] font-bold text-slate-500"><span className="text-blue-600">{item.date}</span> | {item.unit} | {item.model}</div>
-                                </div>
-                                  
-                                {item.status === '退回修正' && (
-                                    <div className="mt-2 bg-red-50/60 p-4 rounded-xl border border-red-100">
-                                        <div className="flex items-center gap-2 text-[11px] font-bold text-red-600 mb-3"><span className="material-symbols-outlined text-base">error</span>原因：{item.rejectReason}</div>
-                                        <button onClick={() => handleLoadRejected(item)} className="w-full py-2.5 bg-red-600 text-white rounded-lg font-black text-xs uppercase hover:bg-red-700 active:scale-95 transition-all shadow-md">載入並修正重送</button>
-                                    </div>
-                                )}
-
-                                {item.status === '已核定(待確認)' && (
-                                    <div className="mt-2 bg-blue-50/60 p-4 rounded-xl border border-blue-100">
-                                        <p className="text-xs font-black text-blue-800 mb-2 uppercase">請確認配發結果，正確無誤後結案：</p>
-                                        <div className="flex flex-col sm:flex-row gap-3 text-[11px] font-bold text-blue-700 mb-4">
-                                            <span className="bg-white px-3 py-1.5 rounded-lg border border-blue-100 shadow-sm flex items-center gap-2"><span className="material-symbols-outlined text-[14px]">lan</span>核定 IP: <span className="font-mono font-black">{item.assignedIp}</span></span>
-                                            <span className="bg-white px-3 py-1.5 rounded-lg border border-blue-100 shadow-sm flex items-center gap-2"><span className="material-symbols-outlined text-[14px]">dns</span>標記名稱: <span className="font-mono font-black">{item.assignedName}</span></span>
-                                        </div>
-                                        <button onClick={() => handleConfirmAsset(item.sn)} className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-black text-xs uppercase hover:bg-blue-700 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2">
-                                           <span className="material-symbols-outlined text-[16px]">task_alt</span>確認結果並結案存檔
+                                    <div className="flex items-center gap-4 text-[11px] font-bold text-slate-500">
+                                        <span className="hidden sm:inline">{item.date} | {item.unit}</span>
+                                        <button onClick={() => setExpandedSn(expandedSn === item.sn ? null : item.sn)} className="flex items-center gap-1 text-blue-600 font-black">
+                                            {expandedSn === item.sn ? '收起詳情' : '查看全資料'}
+                                            <span className="material-symbols-outlined text-sm">{expandedSn === item.sn ? 'expand_less' : 'expand_more'}</span>
                                         </button>
                                     </div>
-                                )}
-
-                                {item.status === '已結案' && (
-                                    <div className="mt-2 bg-emerald-50/40 p-4 rounded-xl border border-emerald-100 space-y-1">
-                                        <div className="flex justify-between text-[11px] font-bold">
-                                            <span className="text-emerald-700 uppercase">配發固定 IP</span>
-                                            <span className="font-mono text-emerald-800">{item.assignedIp}</span>
+                                </div>
+                                  
+                                {/* 🚀 單筆案件全資料展示區塊 (展開後呈現所有物理欄位) */}
+                                {expandedSn === item.sn && (
+                                    <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1">
+                                            <div className="detail-row"><span className="detail-key">案件單號：</span><span className="detail-val">{item.formId}</span></div>
+                                            <div className="detail-row"><span className="detail-key">裝機日期：</span><span className="detail-val">{item.date}</span></div>
+                                            <div className="detail-row"><span className="detail-key">棟別樓層：</span><span className="detail-val">{item.area} 棟 / {item.floor}</span></div>
+                                            <div className="detail-row"><span className="detail-key">使用單位：</span><span className="detail-val">{item.unit}</span></div>
+                                            <div className="detail-row"><span className="detail-key">填報人員：</span><span className="detail-val">{item.applicantFull}</span></div>
+                                            <div className="detail-row"><span className="detail-key">設備型號：</span><span className="detail-val">{item.model}</span></div>
+                                            <div className="detail-row"><span className="detail-key">主要 MAC：</span><span className="detail-val font-mono">{item.mac1}</span></div>
+                                            <div className="detail-row"><span className="detail-key">無線 MAC：</span><span className="detail-val font-mono">{item.mac2 || '無'}</span></div>
+                                            <div className="detail-row col-span-1 sm:col-span-2"><span className="detail-key">原始備註：</span><span className="detail-val">{item.remark}</span></div>
                                         </div>
-                                        <p className="text-[10px] text-emerald-500 font-bold italic text-right">※ 歷史紀錄已正式歸檔</p>
+
+                                        {item.status === '退回修正' && (
+                                            <div className="mt-4 bg-red-50 p-4 rounded-xl border border-red-100">
+                                                <div className="flex items-center gap-2 text-xs font-black text-red-600 mb-3"><span className="material-symbols-outlined text-base">error</span>退回原因：{item.rejectReason}</div>
+                                                <button onClick={() => handleLoadRejected(item)} className="w-full py-2.5 bg-red-600 text-white rounded-lg font-black text-xs uppercase hover:bg-red-700 shadow-md">載入資料並進行物理修正</button>
+                                            </div>
+                                        )}
+
+                                        {(item.status === '已核定(待確認)' || item.status === '已結案') && (
+                                            <div className="mt-4 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                                <p className="text-[10px] font-black text-blue-600 mb-2 uppercase tracking-widest">資訊室核發資料</p>
+                                                <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                                                    <div className="flex-1 bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                                                        <span className="detail-key block text-[9px]">核定 IP</span>
+                                                        <span className="detail-val text-sm font-black text-blue-800">{item.assignedIp}</span>
+                                                    </div>
+                                                    <div className="flex-1 bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                                                        <span className="detail-key block text-[9px]">標記名稱</span>
+                                                        <span className="detail-val text-sm font-black text-blue-800">{item.assignedName}</span>
+                                                    </div>
+                                                </div>
+                                                {item.status === '已核定(待確認)' && (
+                                                    <button onClick={() => handleConfirmAsset(item.sn)} className="w-full py-3 bg-blue-600 text-white rounded-lg font-black text-xs uppercase hover:bg-blue-700 shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95">
+                                                       <span className="material-symbols-outlined text-[18px]">task_alt</span>確認結果並正式結案
+                                                    </button>
+                                                )}
+                                                {item.status === '已結案' && <p className="text-[10px] text-emerald-600 font-black italic text-right">※ 歷史紀錄已物理存檔至大數據庫</p>}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -519,19 +546,19 @@ function KeyinContent() {
         </div>
       )}
 
-      {/* 確認彈窗 (物理覆蓋/結案確認用) */}
+      {/* 確認彈窗 */}
       {confirmDialog.isOpen && (
         <div className="fixed inset-0 z-[2000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 fade-enter">
-           <div className={`glass-card w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl bg-white/95 border-t-[8px] ${confirmDialog.type === 'danger' ? 'border-t-red-500' : 'border-t-blue-500'}`}>
+           <div className={`glass-card w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl bg-white/95 border-t-[8px] ${confirmDialog.type === 'danger' ? 'border-t-[#ba1a1a]' : 'border-t-blue-500'}`}>
               <div className="p-8 text-center space-y-6">
-                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border ${confirmDialog.type === 'danger' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border ${confirmDialog.type === 'danger' ? 'bg-red-50 text-[#ba1a1a] border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                    <span className="material-symbols-outlined text-3xl font-black">{confirmDialog.type === 'danger' ? 'warning' : 'help'}</span>
                  </div>
-                 <h2 className="text-xl font-black text-slate-800">{confirmDialog.title}</h2>
+                 <h2 className="text-xl font-black text-slate-800 tracking-tighter">{confirmDialog.title}</h2>
                  <p className="text-xs font-bold text-slate-500 leading-relaxed">{confirmDialog.message}</p>
                  <div className="flex gap-3 pt-2">
-                    <button onClick={() => setConfirmDialog(prev => ({...prev, isOpen: false}))} className="flex-1 py-3.5 bg-slate-100 rounded-xl font-black text-slate-600 uppercase hover:bg-slate-200">取消</button>
-                    <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({...prev, isOpen: false})); }} className={`flex-1 py-3.5 text-white rounded-xl font-black uppercase transition-transform active:scale-95 ${confirmDialog.type === 'danger' ? 'bg-red-600' : 'bg-blue-600'}`}>確認執行</button>
+                    <button onClick={() => setConfirmDialog(prev => ({...prev, isOpen: false}))} className="flex-1 py-3.5 bg-slate-100 rounded-xl font-black text-slate-600 uppercase">取消</button>
+                    <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({...prev, isOpen: false})); }} className={`flex-1 py-3.5 text-white rounded-xl font-black uppercase transition-transform active:scale-95 ${confirmDialog.type === 'danger' ? 'bg-[#ba1a1a]' : 'bg-blue-600'}`}>確認執行</button>
                  </div>
               </div>
            </div>
@@ -546,10 +573,10 @@ function KeyinContent() {
         </div>
       )}
 
-      {/* Toast 提示 */}
+      {/* Toast 提示容器 */}
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[700] flex flex-col gap-2 pointer-events-none w-full max-w-[340px] px-4">
         {toasts.map(t => (
-            <div key={t.id} className={`px-6 py-4 rounded-2xl text-xs font-black text-white shadow-2xl animate-in slide-in-from-bottom flex items-center gap-3 ${t.type === 'error' ? 'bg-red-600' : t.type === 'info' ? 'bg-slate-900' : 'bg-emerald-600'}`}>
+            <div key={t.id} className={`px-6 py-4 rounded-2xl text-xs font-black text-white shadow-2xl animate-in slide-in-from-bottom flex items-center gap-3 ${t.type === 'error' ? 'bg-red-600' : t.type === 'info' ? 'bg-slate-900/90' : 'bg-emerald-600/90'}`}>
                 <span className="material-symbols-outlined text-base">info</span>
                 <span>{t.msg}</span>
             </div>
