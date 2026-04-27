@@ -1,7 +1,7 @@
 /**
  * Asset-Link PostCSS Configuration
- * 物理修復：採用 CommonJS 格式確保 Vercel 編譯器穩定讀取。
- * 請務必物理刪除 postcss.config.mjs 檔案。
+ * 物理修復：使用最穩定的 CommonJS 格式，防止 Vercel 模組解析崩潰。
+ * (請務必刪除專案中殘留的 postcss.config.mjs)
  */
 module.exports = {
   plugins: {
