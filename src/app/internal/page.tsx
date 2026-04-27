@@ -3,17 +3,20 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { checkIpConflict, submitInternalIssue } from "@/lib/actions/assets";
-import { formatFloor, formatMAC } from "@/lib/logic/formatters";
+import { formatFloor } from "@/lib/logic/formatters";
 
-// 🚀 引入共用模組
+// 🚀 引入共用佈局組件
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import TopNavbar from "@/components/layout/TopNavbar";
 
 /**
  * ==========================================
  * 檔案：src/app/internal/page.tsx
- * 狀態：V2.0 模組化完全體 (DRY 重構版 + ESLint 綠燈)
- * 物理職責：內部人員直通結案庫之快速通道、實時 IP 防撞、17 欄位強同步
+ * 狀態：V4.6 終極修正完全體 (解決 TS2554, TS2345)
+ * 物理職責：
+ * 1. 內部快速通道：直通 historical_assets 結案庫。
+ * 2. 解決型別衝突：對齊 checkIpConflict(2 args) 與 submitInternalIssue(1 arg)。
+ * 3. 行政自動化：人員分機空格自動轉換為 #。
  * ==========================================
  */
 
@@ -26,8 +29,9 @@ export default function InternalFastIssue() {
     area: "A",
     floor: "",
     unit: "",
-    ext: "",
-    type: "桌上型電腦",
+    ext: "", // 存儲 姓名#分機
+    issueType: "NEW" as "NEW" | "REPLACE", 
+    deviceType: "桌上型電腦",
     model: "",
     sn: "",
     mac1: "",
@@ -38,281 +42,286 @@ export default function InternalFastIssue() {
   });
 
   // --- 2. UI 狀態管理 ---
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loaderText, setLoaderText] = useState("");
-  const [toast, setToast] = useState<{ id: number; msg: string; type: "success" | "error" } | null>(null);
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [reportContent, setReportContent] = useState("");
+  const [ipConflict, setIpConflict] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [reportModal, setReportModal] = useState<{ isOpen: boolean; content: string }>({ isOpen: false, content: "" });
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
-  // --- 3. 物理工具函式 ---
-  const showToast = useCallback((msg: string, type: "success" | "error" = "error") => {
-    const id = Date.now();
-    setToast({ id, msg, type });
-    setTimeout(() => setToast(null), 4000);
+  const showToast = useCallback((msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const handleLogout = useCallback(() => {
-    if (confirm("確定結束管理工作並安全登出？")) {
-      sessionStorage.removeItem("asset_link_admin_auth");
-      router.push("/");
-    }
+  // --- 3. 權限驗證 ---
+  useEffect(() => {
+    const auth = sessionStorage.getItem("asset_link_admin_auth");
+    if (auth !== "true") { router.push("/"); }
   }, [router]);
 
-  // --- 4. 實體驗證與初始化 ---
-  useEffect(() => {
-    const isAuth = sessionStorage.getItem("asset_link_admin_auth");
-    if (!isAuth) { router.push("/"); }
-  }, [router]);
+  // --- 4. 物理格式化邏輯 ---
+  
+  // 🚀 行政自動化：空格轉 # (參考 keyin.tsx 規則)
+  const handleExtChange = (val: string) => {
+    const formatted = val.replace(/\s+/g, '#');
+    setFormData(prev => ({ ...prev, ext: formatted }));
+  };
 
-  // --- 5. 設備標記名稱自動演算 (Auto-Naming Engine) ---
-  useEffect(() => {
-    const { area, floor, ext, ip } = formData;
-    if (!area || !floor || !ip) return;
-
-    let floorPart = floor.replace("樓", "").padStart(2, "0");
-    if (floor.toUpperCase().startsWith("B")) {
-        const bMatch = floor.toUpperCase().match(/B[1-3]/);
-        floorPart = bMatch ? bMatch[0] : floor.toUpperCase();
+  const handleMacInput = (key: 'mac1' | 'mac2', val: string) => {
+    const cleaned = val.toUpperCase().replace(/[^0-9A-F]/g, '');
+    let formatted = "";
+    for (let i = 0; i < cleaned.length && i < 12; i++) {
+        if (i > 0 && i % 2 === 0) formatted += ":";
+        formatted += cleaned[i];
     }
+    setFormData(prev => ({ ...prev, [key]: formatted }));
+  };
 
-    let extNum = ext.includes("#") ? ext.split("#")[1] : ext;
-    extNum = extNum.replace(/[^0-9]/g, "");
-    if (extNum.length === 4) extNum = "1" + extNum;
-    let extPart = extNum.padStart(5, "0");
-    if (extPart === "00000" && extNum === "") extPart = "00000";
-
-    const ipParts = ip.split(".");
-    let nameResult = formData.name;
-    if (ipParts.length === 4 && ipParts[3] !== "") {
-      const lastOctet = ipParts[3].padStart(3, "0");
-      nameResult = `${area}${floorPart}-${extPart}-${lastOctet}`.toUpperCase();
+  /**
+   * 🚀 IP 實時物理防撞 (物理修正：解決 TS2554 - 傳遞 2 個參數)
+   */
+  const handleIpBlur = async () => {
+    if (!formData.ip) return;
+    // 根據錯誤日誌 line 83，checkIpConflict 需要 (ip, isReplace)
+    const isConflicted = await checkIpConflict(formData.ip, formData.issueType === "REPLACE");
+    if (isConflicted) {
+        setIpConflict(`⚠️ 物理衝突：IP ${formData.ip} 已被占用`);
+        showToast("偵測到 IP 衝突", "error");
+    } else {
+        setIpConflict(null);
     }
+  };
 
-    if (nameResult !== formData.name) {
-      setFormData((prev) => ({ ...prev, name: nameResult }));
+  const handleClear = () => {
+    if (confirm("確定清空目前所有填報內容？")) {
+        setFormData({
+            date: new Date().toISOString().split("T")[0], area: "A", floor: "", unit: "", ext: "",
+            issueType: "NEW", deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", name: "", remark: ""
+        });
+        setIpConflict(null);
     }
-  }, [formData.area, formData.floor, formData.ext, formData.ip, formData.name]);
+  };
 
-  // --- 6. 提交與物理入庫 (Submit & Sync) ---
-  const submitDirect = async () => {
-    const { date, sn, ip, name, unit, floor } = formData;
-    if (!date || !sn || !ip || !name || !unit || !floor) {
-      return showToast("❌ 必填行政欄位缺失 (日期, 樓層, 單位, 序號, IP, 名稱)", "error");
-    }
+  /**
+   * 🚀 執行結案 (物理修正：解決 TS2554 與 TS2345)
+   */
+  const handleFastIssue = async () => {
+    if (!formData.unit || !formData.sn || !formData.ip) return showToast("請補全單位、序號與 IP", "error");
+    if (ipConflict) return showToast("請先排除 IP 物理衝突", "error");
+    if (!formData.ext.includes("#")) return showToast("人員格式錯誤 (需姓名#分機)", "error");
 
     setIsLoading(true);
-    setLoaderText("掃描全院 IP 衝突...");
+    setLoaderText("執行結案數據物理對沖...");
 
     try {
-      // A. IP 防撞檢測
-      const { conflict, source } = await checkIpConflict(ip, false);
-
-      if (conflict) {
-        setIsLoading(false);
-        return showToast(`⚠️ IP 衝突！該位址已被 [${source}] 佔用。`, "error");
-      }
-
-      setLoaderText("物理入庫與結案對沖中...");
-      
-      // B. 構建物理裝載包
-      const payload = {
-        installDate: formData.date,
+      /**
+       * 🚀 物理修正對沖：
+       * 1. 根據 TS2345，Payload 必須包含 installDate。
+       * 2. 根據 TS2554，submitInternalIssue 只需要 1 個參數 (Payload 對象)。
+       */
+      await submitInternalIssue({
+        installDate: formData.date, // 修正屬性名稱以對齊後端
         area: formData.area,
-        floor: formData.floor, // 後端與 Action 會執行 formatFloor
+        floor: formatFloor(formData.floor),
         unit: formData.unit,
         ext: formData.ext,
-        type: formData.type,
+        type: formData.deviceType,
         model: formData.model,
         sn: formData.sn.toUpperCase(),
         mac1: formData.mac1,
         mac2: formData.mac2,
         ip: formData.ip,
-        name: formData.name,
-        remark: formData.remark || "資產室內部核發"
-      };
+        name: formData.name.toUpperCase(),
+        remark: formData.remark,
+        // 如果後端將 isReplace 整合進 Payload，請在此加入：
+        // isReplace: formData.issueType === "REPLACE"
+      });
 
-      // C. 寫入 Supabase
-      const { success } = await submitInternalIssue(payload);
+      const reportTxt = [
+        "【Asset-Link 內部快速結案報告】",
+        `執行日期: ${new Date().toLocaleDateString()}`,
+        `裝機地點: ${formData.area}棟 ${formatFloor(formData.floor)}F`,
+        `使用單位: ${formData.unit}`,
+        `行政人員: ${formData.ext}`,
+        `核定 IP : ${formData.ip}`,
+        `物理序號: ${formData.sn.toUpperCase()}`,
+        `設備名稱: ${formData.name.toUpperCase()}`,
+        `業務性質: ${formData.issueType === "REPLACE" ? "汰換結案" : "新購結案"}`,
+        "------------------------------",
+        "※ 此紀錄已成功物理寫入結案庫，無需審核。"
+      ].join("\n");
 
-      if (success) {
-        generateReport(payload);
-        showToast("✅ 資產已完成物理入庫並結案", "success");
-      }
-    } catch (err: unknown) {
-      showToast(`❌ 傳輸失敗：${err instanceof Error ? err.message : String(err)}`, "error");
+      setReportModal({ isOpen: true, content: reportTxt });
+      showToast("內部結案入庫成功");
+    } catch (e) {
+      showToast("結案傳輸異常", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- 7. 回執單生成與複製 ---
-  const generateReport = (pkg: Record<string, string>) => {
-    const txt = `【內部快速配發行政回執】
-產生時間：${new Date().toLocaleString()}
-同步狀態：已物理同步至歷史資料庫 (A-Q 17欄)
-
-[1. 行政主表資料]
-配發標記：${pkg.name}
-部署位置：${pkg.area}棟 ${pkg.floor}
-使用單位：${pkg.unit}
-姓名/分機：${pkg.ext || '未提供'}
-
-[2. 設備資產明細]
-設備類型：${pkg.type}
-品牌型號：${pkg.model || '未提供'}
-設備序號：${pkg.sn}
-分配 IP：${pkg.ip}
-物理位址：${pkg.mac1 || '未提供'} (主)
-
-系統聲明：本報告為行政結案憑證，請留存備查。`;
-    
-    setReportContent(txt);
-    setReportModalOpen(true);
-  };
-
   const copyReport = () => {
-    navigator.clipboard.writeText(reportContent).then(() => {
-      showToast("✅ 行政報告已複製至剪貼簿", "success");
-    }).catch(() => {
-      showToast("❌ 複製失敗，請手動全選複製", "error");
-    });
-  };
-
-  const closeReportAndReset = () => {
-    setReportModalOpen(false);
-    const preservedDate = formData.date;
-    setFormData({
-      date: preservedDate,
-      area: "A", floor: "", unit: "", ext: "", type: "桌上型電腦",
-      model: "", sn: "", mac1: "", mac2: "", ip: "", name: "", remark: ""
-    });
+    const el = document.createElement('textarea');
+    el.value = reportModal.content;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast("報告內容已物理複製");
   };
 
   return (
-    <div className="bg-[#f7f9fb] min-h-screen pb-10 font-[family-name:-apple-system,BlinkMacSystemFont,system-ui,sans-serif] text-[10.5px] text-[#1d1d1f] antialiased tracking-[-0.015em]">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .glass-card { background: rgba(255, 255, 255, 0.45); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 10px 40px rgba(0, 88, 188, 0.04); }
-        .info-label { position: absolute; top: -7px; left: 12px; background: #fff; padding: 0 6px; font-size: 9px; font-weight: 800; color: #86868b; z-index: 10; letter-spacing: 0.05em; border-radius: 4px; border: 1px solid rgba(0,0,0,0.05); }
-        .compact-input { background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 12px; padding: 12px 16px; width: 100%; transition: all 0.2s; font-weight: 700; outline: none; }
-        .compact-input:focus { background: white; border-color: #0058bc; box-shadow: 0 0 0 4px rgba(0, 88, 188, 0.1); }
-      `}} />
+    <div className="bg-[#f2f5f8] min-h-screen flex text-[#1d1d1f] font-sans antialiased overflow-x-hidden">
+      <AdminSidebar currentRoute="/internal" isOpen={isSidebarOpen} onLogout={() => router.push("/")} />
 
-      {/* 🚀 模組化側邊欄 */}
-      <AdminSidebar currentRoute="/internal" isOpen={isSidebarOpen} onLogout={handleLogout} />
+      <div className="flex-1 flex flex-col">
+        <TopNavbar title="內部人員直通結案通道" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
 
-      <main className="lg:ml-64 px-4 lg:px-10 mt-6 max-w-5xl mx-auto space-y-6 flex flex-col min-h-screen pt-12">
-        
-        {/* 🚀 模組化頂部導覽列 */}
-        <TopNavbar 
-          title="內部緊急配發通道" 
-          subtitle="Infrastructure Control"
-          onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-          showSearch={false}
-        />
+        <main className="p-6 lg:p-10 max-w-6xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+          
+          <div className="flex justify-between items-end mb-10">
+              <div>
+                  <h1 className="text-3xl font-black text-slate-800 tracking-tight">內部快速結案錄入</h1>
+                  <p className="text-sm font-bold text-slate-500 mt-1 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                    Direct Archive Channel for IT Staff
+                  </p>
+              </div>
+              <button onClick={handleClear} className="px-6 py-3 bg-white border border-slate-200 rounded-2xl font-black text-xs text-slate-400 hover:text-red-500 transition-all flex items-center gap-2 shadow-sm">
+                  <span className="material-symbols-outlined text-sm">refresh</span> 全部重設
+              </button>
+          </div>
 
-        <div className="mb-4">
-            <p className="font-bold text-slate-500 text-sm">管理與手動執行 17 欄位行政強同步結案作業，繞過廠商審核流程。</p>
-        </div>
-
-        <section className="glass-card p-8 grid grid-cols-1 md:grid-cols-2 gap-8 relative pt-10 border-l-[6px] border-l-emerald-500 rounded-[2rem]">
-          <div className="relative">
-            <label className="info-label text-blue-600">裝機日期 (C)</label>
-            <input type="date" title="裝機日期" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="compact-input" />
-          </div>
-          <div className="relative">
-            <label className="info-label text-blue-600">院區棟別 (D)</label>
-            <select title="院區棟別" value={formData.area} onChange={e => setFormData({ ...formData, area: e.target.value })} className="compact-input">
-                {["A","B","C","D","E","G","H","I","K","T"].map(v => <option key={v} value={v}>{v} 棟</option>)}
-            </select>
-          </div>
-          <div className="relative md:col-span-2">
-            <label className="info-label text-blue-600">樓層區域 (E)</label>
-            <input type="text" title="樓層區域" value={formData.floor} onBlur={e => setFormData({ ...formData, floor: formatFloor(e.target.value) })} onChange={e => setFormData({ ...formData, floor: e.target.value })} placeholder="例如：05 或 B1" className="compact-input" />
-          </div>
-          <div className="relative">
-            <label className="info-label">使用單位 (F)</label>
-            <input type="text" title="使用單位" value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} placeholder="護理站、藥劑科..." className="compact-input" />
-          </div>
-          <div className="relative">
-            <label className="info-label">申請人#分機 (G)</label>
-            <input type="text" title="申請人與分機" value={formData.ext} onChange={e => setFormData({ ...formData, ext: e.target.value })} placeholder="姓名#分機" className="compact-input" />
-          </div>
-        </section>
-
-        <section className="glass-card p-8 space-y-8 relative pt-10 border-l-[6px] border-l-slate-900 rounded-[2rem]">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="relative">
-                <label className="info-label">資產類型 (H)</label>
-                <select title="資產類型" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} className="compact-input">
-                    <option value="桌上型電腦">桌上型電腦</option><option value="筆記型電腦">筆記型電腦</option>
-                    <option value="印表機">印表機</option><option value="行政周邊">行政周邊</option>
-                </select>
-            </div>
-            <div className="relative">
-                <label className="info-label">品牌型號 (I)</label>
-                <input type="text" title="品牌型號" value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} placeholder="例如：HP ProDesk 600" className="compact-input" />
-            </div>
-          </div>
-          <div className="relative">
-              <label className="info-label text-red-500 font-black">產品序號 S/N (J)</label>
-              <input type="text" title="產品序號" value={formData.sn} maxLength={12} onChange={e => setFormData({ ...formData, sn: e.target.value.toUpperCase() })} className="compact-input font-mono uppercase tracking-widest bg-red-50/30 text-red-700" placeholder="嚴格 12 位元" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-             <div className="relative">
-                <label className="info-label text-blue-600 font-bold">主要 MAC (K)</label>
-                <input type="text" title="主要 MAC" value={formData.mac1} onChange={e => setFormData({ ...formData, mac1: formatMAC(e.target.value) })} className="compact-input font-mono uppercase text-blue-700" placeholder="XX:XX:XX:XX:XX:XX" maxLength={17} />
-             </div>
-             <div className="relative">
-                <label className="info-label text-emerald-600 font-bold">無線 MAC (L)</label>
-                <input type="text" title="無線 MAC" value={formData.mac2} onChange={e => setFormData({ ...formData, mac2: formatMAC(e.target.value) })} className="compact-input font-mono uppercase text-emerald-700" placeholder="若無則留空" maxLength={17} />
-             </div>
-          </div>
-          <div className="relative">
-              <label className="info-label text-slate-500">行政備註</label>
-              <textarea title="備註" value={formData.remark} onChange={e => setFormData({ ...formData, remark: e.target.value })} rows={2} className="compact-input" placeholder="可填寫特殊配發原因..." />
-          </div>
-        </section>
-
-        <section className="glass-card p-8 bg-blue-50/10 space-y-8 relative pt-10 border-dashed border-blue-200 rounded-[2rem]">
-          <div className="relative">
-              <label className="info-label text-blue-600 font-bold">核定 IP 位址 (N)</label>
-              <input type="text" title="核定 IP" value={formData.ip} onChange={e => setFormData({ ...formData, ip: e.target.value })} className="compact-input font-mono text-base font-bold text-blue-800 bg-blue-50/30" placeholder="10.x.x.x" />
-          </div>
-          <div className="relative">
-              <label className="info-label text-emerald-600 font-bold">自動標記名稱 (M)</label>
-              <input type="text" title="設備標記名稱" value={formData.name} readOnly className="compact-input bg-emerald-50/30 font-mono text-sm uppercase tracking-tight text-emerald-800 outline-none" placeholder="系統自動演算中..." />
-          </div>
-        </section>
-
-        <button onClick={submitDirect} disabled={isLoading} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black shadow-xl shadow-slate-900/20 active:scale-95 transition-all text-sm tracking-[0.3em] uppercase flex items-center justify-center gap-2 disabled:opacity-50">
-          {isLoading ? <span className="material-symbols-outlined animate-spin">refresh</span> : <span className="material-symbols-outlined text-[18px]">verified</span>}
-          執行物理入庫結案
-        </button>
-
-      </main>
-
-      {/* 🚀 行政回執單彈窗 */}
-      {reportModalOpen && (
-        <div className="fixed inset-0 z-[700] flex items-center justify-center bg-slate-900/50 backdrop-blur-md p-4 fade-enter">
-          <div className="glass-card w-full max-w-2xl rounded-[2rem] p-8 shadow-2xl flex flex-col bg-white/95 border-t-[8px] border-t-emerald-500">
-              <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                      <span className="material-symbols-outlined text-emerald-600 text-[28px]">receipt_long</span>
-                      <h3 className="text-slate-800 text-xl font-black tracking-tight">內部行政回執單</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* 左軌：行政對沖 */}
+              <section className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/40 space-y-6 border border-white">
+                  <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest flex items-center gap-2 mb-6">
+                      <span className="material-symbols-outlined font-black">domain</span> 裝機行政資訊
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="date-in">裝機日期</label>
+                          <input id="date-in" type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="area-sel">裝機棟別</label>
+                          <select id="area-sel" title="棟別" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold text-sm">
+                              {["A","B","C","D","E","G","H","I","K","T"].map(v => <option key={v} value={v}>{v} 棟</option>)}
+                          </select>
+                      </div>
                   </div>
-                  <button onClick={closeReportAndReset} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors">
-                      <span className="material-symbols-outlined text-sm">close</span>
-                  </button>
+
+                  <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="floor-in">樓層</label>
+                          <input id="floor-in" value={formData.floor} onChange={e => setFormData({...formData, floor: e.target.value})} onBlur={e => setFormData({...formData, floor: formatFloor(e.target.value)})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold text-sm" placeholder="05" />
+                      </div>
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-blue-600 uppercase ml-1 block" htmlFor="ext-in">人員分機 (自動化)</label>
+                          <input id="ext-in" value={formData.ext} onChange={e => handleExtChange(e.target.value)} className="w-full bg-blue-50/50 border-none rounded-2xl px-5 py-4 font-black text-sm text-blue-700 placeholder:text-blue-200" placeholder="姓名 分機 (空格帶入#)" title="姓名#分機" />
+                      </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="unit-in">裝機單位全稱</label>
+                      <input id="unit-in" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-black text-slate-800" placeholder="例如: 資訊組" />
+                  </div>
+
+                  <div className="pt-4 space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="remark-in">結算行政備註</label>
+                      <textarea id="remark-in" value={formData.remark} onChange={e => setFormData({...formData, remark: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold text-sm min-h-[120px]" placeholder="輸入結案相關行政紀錄..." />
+                  </div>
+              </section>
+
+              {/* 右軌：技術參數 */}
+              <section className="bg-slate-900 rounded-[2.5rem] p-8 shadow-2xl space-y-6 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 rounded-full -mr-24 -mt-24 group-hover:scale-150 transition-transform duration-1000"></div>
+                  <h3 className="text-sm font-black text-blue-400 uppercase tracking-[0.3em] flex items-center gap-3 mb-6 relative z-10">
+                      <span className="material-symbols-outlined text-blue-400 font-black">memory</span> 物理技術參數對沖
+                  </h3>
+                  
+                  <div className="space-y-6 relative z-10">
+                      <div className="grid grid-cols-2 gap-5">
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block">業務性質</label>
+                              <div className="flex bg-slate-800 p-1 rounded-xl">
+                                  <button onClick={() => setFormData({...formData, issueType: "NEW"})} className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${formData.issueType === 'NEW' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>新購配發</button>
+                                  <button onClick={() => setFormData({...formData, issueType: "REPLACE"})} className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${formData.issueType === 'REPLACE' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500'}`}>舊機汰換</button>
+                              </div>
+                          </div>
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="type-sel">設備類型</label>
+                              <select id="type-sel" title="類型" value={formData.deviceType} onChange={e => setFormData({...formData, deviceType: e.target.value})} className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-white font-bold text-sm">
+                                  <option>桌上型電腦</option><option>筆記型電腦</option><option>伺服器</option><option>印表機</option><option>網路設備</option>
+                              </select>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="model-in">品牌型號</label>
+                              <input id="model-in" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-white font-bold text-sm" placeholder="ASUS D700" />
+                          </div>
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-red-500 uppercase ml-1 block" htmlFor="sn-in">物理序號 (S/N)</label>
+                              <input id="sn-in" value={formData.sn} onChange={e => setFormData({...formData, sn: e.target.value.toUpperCase()})} className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-red-400 font-mono font-black" placeholder="強制大寫" title="輸入序號" />
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="mac1-in">主要 MAC</label>
+                              <input id="mac1-in" value={formData.mac1} onChange={e => handleMacInput('mac1', e.target.value)} className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-blue-400 font-mono text-xs font-black" placeholder="XX:XX:XX..." />
+                          </div>
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="mac2-in">無線 MAC</label>
+                              <input id="mac2-in" value={formData.mac2} onChange={e => handleMacInput('mac2', e.target.value)} className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-emerald-400 font-mono text-xs font-black" placeholder="選填欄位" />
+                          </div>
+                      </div>
+                      
+                      <div className="pt-8 border-t border-slate-800/60 space-y-6">
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-blue-500 uppercase ml-1 block" htmlFor="ip-in">核定固定 IP (防撞偵測)</label>
+                              <input id="ip-in" value={formData.ip} onChange={e => setFormData({...formData, ip: e.target.value})} onBlur={handleIpBlur} className={`w-full border-none rounded-2xl px-6 py-5 font-mono font-black text-xl transition-all shadow-2xl ${ipConflict ? 'bg-red-900/40 text-red-200 ring-2 ring-red-500' : 'bg-slate-800 text-blue-400 focus:ring-2 focus:ring-blue-600'}`} placeholder="10.X.X.X" />
+                              {ipConflict && <p className="text-[10px] text-red-500 font-black mt-3 animate-bounce">{ipConflict}</p>}
+                          </div>
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="name-in">物理設備名稱標記</label>
+                              <input id="name-in" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} className="w-full bg-slate-800 border-none rounded-xl px-4 py-3 text-white font-black tracking-widest" placeholder="例如: INF-PC-01" />
+                          </div>
+                      </div>
+                  </div>
+              </section>
+          </div>
+
+          <button onClick={handleFastIssue} disabled={isLoading || !!ipConflict} className="w-full mt-10 py-7 bg-slate-900 text-white rounded-3xl font-black text-sm uppercase tracking-[0.4em] shadow-2xl active:scale-95 transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-4">
+              <span className="material-symbols-outlined text-blue-500">verified</span>
+              執行內部快速結案並物理存檔
+          </button>
+        </main>
+      </div>
+
+      {/* 🚀 物理結案報告 Modal */}
+      {reportModal.isOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-xl rounded-[3.5rem] p-12 shadow-2xl animate-in zoom-in-95 border-t-[12px] border-t-blue-600 relative overflow-hidden">
+              <div className="text-center mb-10">
+                  <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-6 shadow-inner border border-blue-100">
+                      <span className="material-symbols-outlined text-6xl font-black">check_circle</span>
+                  </div>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">結案報告物理生成成功</h2>
+                  <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">Internal Fast Issue Archived</p>
               </div>
-              <div className="flex-1 bg-slate-50/50 rounded-2xl border border-slate-200/50 shadow-inner p-2 mb-6">
-                  <textarea title="回執單內容" readOnly value={reportContent} className="w-full h-64 text-[11.5px] font-mono p-4 bg-transparent border-none focus:ring-0 text-slate-700 leading-relaxed outline-none resize-none"></textarea>
+              <div className="bg-slate-50 rounded-[2rem] p-8 font-mono text-[11px] text-slate-700 leading-relaxed whitespace-pre-wrap border border-slate-100 mb-10 shadow-inner select-all">
+                  {reportModal.content}
               </div>
-              <div className="flex justify-end gap-3">
-                  <button onClick={copyReport} className="px-6 py-3.5 bg-white border border-slate-200 text-slate-700 text-xs font-black rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-colors uppercase tracking-widest shadow-sm flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[16px]">content_copy</span> 複製內容
+              <div className="flex gap-4">
+                  <button onClick={copyReport} className="flex-1 py-5 bg-blue-600 text-white text-xs font-black rounded-2xl shadow-xl shadow-blue-900/20 active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center gap-3">
+                      <span className="material-symbols-outlined text-lg">content_copy</span> 物理複製內容
                   </button>
-                  <button onClick={closeReportAndReset} className="px-8 py-3.5 bg-slate-900 text-white text-xs font-black rounded-xl shadow-lg active:scale-95 transition-all uppercase tracking-widest">
+                  <button onClick={() => window.location.reload()} className="flex-1 py-5 bg-slate-100 text-slate-600 text-xs font-black rounded-2xl active:scale-95 transition-all uppercase tracking-widest">
                       完成並關閉
                   </button>
               </div>
@@ -322,21 +331,21 @@ export default function InternalFastIssue() {
 
       {/* 強同步遮罩 */}
       {isLoading && (
-        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-white/80 backdrop-blur-xl">
-           <div className="w-12 h-12 border-4 border-primary-fixed border-t-primary rounded-full animate-spin mb-4"></div>
-           <p className="text-[12px] font-black text-primary uppercase tracking-widest mt-4">{loaderText}</p>
+        <div className="fixed inset-0 z-[2000] flex flex-col items-center justify-center bg-white/90 backdrop-blur-xl">
+           <div className="w-16 h-16 border-[6px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-8 shadow-2xl"></div>
+           <p className="text-sm font-black text-blue-600 uppercase tracking-[0.5em] animate-pulse">{loaderText}</p>
         </div>
       )}
 
-      {/* 通知系統 */}
-      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[1100] flex flex-col gap-3 pointer-events-none w-full max-w-[320px] px-5">
-        {toast && (
-          <div className={`px-6 py-4 rounded-3xl shadow-2xl font-black text-[11px] animate-bounce flex items-center gap-3 border border-white/20 pointer-events-auto text-white ${toast.type === "success" ? "bg-slate-900" : "bg-red-600"}`}>
-            <span className="material-symbols-outlined text-base">{toast.type === "success" ? "check_circle" : "error"}</span>
-            <span>{toast.msg}</span>
-          </div>
-        )}
-      </div>
+      {/* 物理通知氣泡 */}
+      {toast && (
+        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[2100] px-10 py-6 rounded-[2.5rem] shadow-2xl font-black text-xs text-white flex items-center gap-5 animate-in slide-in-from-bottom duration-500 bg-slate-900/95 backdrop-blur-md">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg ${toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
+                <span className="material-symbols-outlined text-lg text-white">{toast.type === 'success' ? 'done_all' : 'error'}</span>
+            </div>
+            <span className="tracking-wide text-sm font-bold">{toast.msg}</span>
+        </div>
+      )}
     </div>
   );
 }

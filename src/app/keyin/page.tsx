@@ -1,597 +1,400 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { submitAssetBatch, getVendorProgress, vendorConfirmAsset } from "@/lib/actions/assets";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { checkIpConflict, submitInternalIssue } from "@/lib/actions/assets";
 import { formatFloor } from "@/lib/logic/formatters";
+
+// 🚀 引入共用佈局組件
+import AdminSidebar from "@/components/layout/AdminSidebar";
+import TopNavbar from "@/components/layout/TopNavbar";
 
 /**
  * ==========================================
- * 檔案：src/app/keyin/page.tsx
- * 狀態：V6.0 旗艦終極完全體 (物理還原 + MAC 強制格式化 + 單筆全資料)
+ * 檔案：src/app/internal/page.tsx
+ * 狀態：V5.0 旗艦終極版 (日曆選取 + 行政自動化 + 型別全修復)
  * 物理職責：
- * 1. 完整保留 V5.1 原始 UI 布局與玻璃擬態樣式。
- * 2. MAC 格式化：每 2 碼自動帶入 ":"，限制全大寫 A-F 與 0-9。
- * 3. 進度查詢：支援點擊展開查看單筆案件之「全資料欄位」。
- * 4. 錯誤修復：解決 TS18047 searchParams 守衛與 axe/forms 標籤關聯。
+ * 1. 內部快速通道：年月日日曆物理選取，直通 historical_assets 結案庫。
+ * 2. 解決型別衝突：精準對沖 checkIpConflict(2) 與 submitInternalIssue(1)。
+ * 3. 行政規則：姓名分機空格自動帶入 #。
+ * 4. UI 完全還原：保留發光裝飾球、玻璃卡片與強同步遮罩。
  * ==========================================
  */
 
-interface AssetRow {
-  id: number;
-  model: string;
-  sn: string;
-  originalSn?: string; 
-  mac1: string;
-  mac2: string;
-  ext: string;
-  oldInfo: string;
-  type: "NEW" | "REPLACE";
-}
-
-interface ProgressRecord {
-  formId: string;
-  status: string;
-  date: string;
-  unit: string;
-  model: string;
-  sn: string;
-  mac1: string;
-  mac2: string;
-  area: string;
-  floor: string;
-  applicantFull: string;
-  remark: string;
-  rejectReason: string;
-  assignedIp: string;
-  assignedName: string;
-}
-
-function KeyinContent() {
+export default function InternalFastIssue() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [vendorName, setVendorName] = useState("身分對沖中...");
 
-  const [vdsId, setVdsId] = useState("加載中...");
-  const [selectedDate, setSelectedDate] = useState("");
-  const [applicant, setApplicant] = useState("");
-  const [unit, setUnit] = useState("");
-  const [floor, setFloor] = useState("");
-  const [area, setArea] = useState("A");
-  const [areaOther, setAreaOther] = useState("");
-  const [rows, setRows] = useState<AssetRow[]>([]);
-    
-  const [isLoading, setIsLoading] = useState(false);
-  const [loaderText, setLoaderText] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" | "info" }[]>([]);
-    
-  const [isProgressOpen, setIsProgressOpen] = useState(false);
-  const [progressData, setProgressData] = useState<ProgressRecord[]>([]);
-  const [isProgressLoading, setIsProgressLoading] = useState(false);
-  
-  // 🚀 狀態控制：控制目前展開哪一筆案件的全資料
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const [confirmDialog, setConfirmDialog] = useState({ 
-    isOpen: false, title: "", message: "", type: "info" as "danger" | "info", onConfirm: () => {} 
+  // --- 1. 核心表單狀態 ---
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split("T")[0],
+    area: "A",
+    floor: "",
+    unit: "",
+    ext: "", // 存儲 姓名#分機
+    issueType: "NEW" as "NEW" | "REPLACE", 
+    deviceType: "桌上型電腦",
+    model: "",
+    sn: "",
+    mac1: "",
+    mac2: "",
+    ip: "",
+    name: "",
+    remark: ""
   });
 
-  const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, msg, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  // --- 2. 日曆與 UI 狀態 ---
+  const [viewDate, setViewDate] = useState(new Date()); // 用於切換月份視圖
+  const [isLoading, setIsLoading] = useState(false);
+  const [loaderText, setLoaderText] = useState("");
+  const [ipConflict, setIpConflict] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [reportModal, setReportModal] = useState<{ isOpen: boolean; content: string }>({ isOpen: false, content: "" });
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  const showToast = useCallback((msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
   }, []);
 
-  /**
-   * 🚀 MAC 物理格式化邏輯 (標準 IEEE 802)
-   * 規則：輸入 2 碼自動補 ":"，僅限大寫 A-F 與 數字 0-9。
-   */
-  const handleMacInput = (val: string) => {
-    // 1. 強制轉大寫並過濾非 16 進位字元
+  // --- 3. 權限物理守衛 ---
+  useEffect(() => {
+    const auth = sessionStorage.getItem("asset_link_admin_auth");
+    if (auth !== "true") { router.push("/"); }
+  }, [router]);
+
+  // --- 4. 物理格式化與自動化邏輯 ---
+  
+  // 🚀 行政自動化：空格轉 # (參考 keyin.tsx)
+  const handleExtChange = (val: string) => {
+    const formatted = val.replace(/\s+/g, '#');
+    setFormData(prev => ({ ...prev, ext: formatted }));
+  };
+
+  // 🚀 MAC 格式化對沖
+  const handleMacInput = (key: 'mac1' | 'mac2', val: string) => {
     const cleaned = val.toUpperCase().replace(/[^0-9A-F]/g, '');
-    // 2. 物理插入冒號
     let formatted = "";
     for (let i = 0; i < cleaned.length && i < 12; i++) {
         if (i > 0 && i % 2 === 0) formatted += ":";
         formatted += cleaned[i];
     }
-    return formatted.slice(0, 17);
+    setFormData(prev => ({ ...prev, [key]: formatted }));
   };
 
-  // ----------------------------------------------------------------
-  // 初始化：身分、日期、單號、草稿載入 (TS18047 物理修復)
-  // ----------------------------------------------------------------
-  useEffect(() => {
-    if (!searchParams) return; 
-    let mounted = true;
-    const timer = setTimeout(() => {
-      if (!mounted) return;
-      const sessionVendor = sessionStorage.getItem("asset_link_vendor");
-      const urlVendor = searchParams.get("v");
-      const currentVendor = sessionVendor || urlVendor || "訪客";
-      setVendorName(currentVendor);
-
-      const now = new Date();
-      const y = now.getFullYear();
-      const mStr = String(now.getMonth() + 1).padStart(2, '0');
-      const dStr = String(now.getDate()).padStart(2, '0');
-      const todayStr = `${y}-${mStr}-${dStr}`;
-      const initVdsId = `VDS-${String(y).slice(-2)}${mStr}${dStr}-${Math.floor(Math.random() * 900 + 100)}`;
-      setVdsId(initVdsId);
-
-      let draftLoaded = false;
-      if (currentVendor !== "訪客" && currentVendor !== "未知廠商") {
-        try {
-          const draftRaw = localStorage.getItem(`AL_KEYIN_V0_${currentVendor}`);
-          if (draftRaw) {
-            const draft = JSON.parse(draftRaw);
-            setSelectedDate(draft.date || todayStr);
-            setArea(draft.area || "A"); setAreaOther(draft.areaOther || "");
-            setFloor(draft.floor || ""); setUnit(draft.unit || ""); setApplicant(draft.applicant || "");
-            if (draft.rows && draft.rows.length > 0) { 
-                setRows(draft.rows); 
-                draftLoaded = true; 
-                showToast("已載入暫存草稿", "info"); 
-            }
-          }
-        } catch (err: unknown) { console.warn("Draft Load Error:", err); }
-      }
-      if (!draftLoaded) {
-        setSelectedDate(todayStr);
-        setRows([{ id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }]);
-      }
-    }, 0);
-    return () => { mounted = false; clearTimeout(timer); };
-  }, [searchParams, showToast]);
-
-  // 物理儲存草稿機制
-  useEffect(() => {
-    if (vendorName && vendorName !== "身分對沖中..." && vendorName !== "訪客") {
-      try { 
-          localStorage.setItem(`AL_KEYIN_V0_${vendorName}`, JSON.stringify({ 
-              date: selectedDate, area, areaOther, floor, unit, applicant, rows 
-          })); 
-      } catch (err: unknown) { console.warn(err); }
+  // 🚀 IP 物理防撞：解決 TS2554 (傳遞 2 個參數)
+  const handleIpBlur = async () => {
+    if (!formData.ip) return;
+    const isConflicted = await checkIpConflict(formData.ip, formData.issueType === "REPLACE");
+    if (isConflicted) {
+        setIpConflict(`⚠️ 物理衝突：IP ${formData.ip} 已被佔用`);
+        showToast("偵測到 IP 衝突", "error");
+    } else {
+        setIpConflict(null);
     }
-  }, [selectedDate, area, areaOther, floor, unit, applicant, rows, vendorName]);
+  };
 
-  // V5.1 原始日曆邏輯
-  const renderCalendarDays = () => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  /**
+   * 🚀 物理日曆生成器 (年月日選擇器)
+   */
+  const calendarDays = useMemo(() => {
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
     const elements = [];
-    for (let i = 0; i < firstDay; i++) elements.push(<div key={`empty-${i}`} className="h-10"></div>);
-    for (let j = 1; j <= daysInMonth; j++) {
-      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
-      elements.push(
-        <div key={`day-${j}`} 
-             onClick={() => setSelectedDate(dateStr)} 
-             className={`h-10 flex items-center justify-center text-sm rounded-xl cursor-pointer font-bold transition-all ${dateStr === selectedDate ? 'bg-[#2563eb] text-white shadow-md shadow-blue-500/30 scale-110' : 'text-slate-500 hover:bg-blue-50'}`}>
-          {j}
-        </div>
-      );
+    // 補足前置空格
+    for (let i = 0; i < firstDay; i++) elements.push(null);
+    // 填充日期字串
+    for (let d = 1; d <= daysInMonth; d++) {
+        elements.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
     }
     return elements;
-  };
+  }, [viewDate]);
 
-  const handleOpenProgress = async () => {
-    setIsSidebarOpen(false); setIsProgressOpen(true); setIsProgressLoading(true);
-    try {
-      const vendorHistory = await getVendorProgress(vendorName);
-      setProgressData(vendorHistory as ProgressRecord[]);
-    } catch (err: unknown) { showToast("無法讀取全資料進度", "error"); } finally { setIsProgressLoading(false); }
-  };
-
-  const handleLoadRejected = (item: ProgressRecord) => {
-    setConfirmDialog({
-      isOpen: true, title: "載入案件修正", message: "確定載入此退回案件？將物理覆蓋目前的填報表單。", type: "danger",
-      onConfirm: () => {
-        setVdsId(item.formId); setSelectedDate(item.date);
-        const validAreas = ["A","B","C","D","E","G","H","I","K","T"];
-        if (validAreas.includes(item.area)) { setArea(item.area); setAreaOther(""); } else { setArea("OTHER"); setAreaOther(item.area); }
-        setFloor(item.floor); setUnit(item.unit);
-        const parts = item.applicantFull.split('#'); setApplicant(parts[0] || "");
-        const isReplace = item.remark.includes("[REPLACE]");
-        setRows([{ 
-            id: Date.now(), model: item.model, sn: item.sn, originalSn: item.sn, 
-            mac1: item.mac1, mac2: item.mac2, ext: parts[1] || "", 
-            oldInfo: isReplace ? item.remark.replace("[REPLACE] 舊機汰換。", "").trim() : "", 
-            type: isReplace ? "REPLACE" : "NEW" 
-        }]);
-        setIsProgressOpen(false);
-        showToast("已載入表單資料，請修正後重新提交", "success");
-      }
-    });
-  };
-
-  const handleConfirmAsset = async (sn: string) => {
-    setConfirmDialog({
-      isOpen: true, title: "物理結案確認", message: "確認配發之 IP 與名稱正確無誤？確認後將正式遷移至歷史庫歸檔。", type: "info",
-      onConfirm: async () => {
-        setIsLoading(true); setLoaderText("結案遷移入庫中...");
-        try {
-          await vendorConfirmAsset(sn);
-          showToast("✅ 已成功結案存檔", "success");
-          handleOpenProgress();   
-        } catch (err: unknown) { showToast("結案失敗，請檢查網路", "error"); } finally { setIsLoading(false); }
-      }
-    });
-  };
-
-  const clearAll = () => {
-    setConfirmDialog({
-      isOpen: true, title: "清空表單", message: "確定要刪除目前所有填寫內容嗎？資料無法復原。", type: "danger",
-      onConfirm: () => {
-        try { localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`); } catch(err: unknown) { console.warn(err); }
-        setUnit(""); setApplicant(""); setFloor(""); setArea("A"); setAreaOther("");
-        setRows([{ id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }]);
-      }
-    });
-  };
-
-  const handleSubmit = async () => {
-    if (!unit.trim() || !applicant.trim() || !floor.trim()) return showToast("請完整填寫 單位、姓名 及 樓層", "error");
-    if (rows.length === 0) return showToast("請至少新增一筆設備", "error");
-    
-    const macRegex = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
-    for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
-        if (!r.model || !r.sn) return showToast(`第 ${i + 1} 項設備資訊不全`, "error");
-        if (!r.mac1 && !r.mac2) return showToast(`第 ${i + 1} 項必須提供一組 MAC`, "error");
-        if (r.mac1 && !macRegex.test(r.mac1)) return showToast(`第 ${i + 1} 項主要 MAC 格式異常`, "error");
+  const handleClear = () => {
+    if (confirm("確定清空目前所有行政填報內容？")) {
+        setFormData({
+            date: new Date().toISOString().split("T")[0], area: "A", floor: "", unit: "", ext: "",
+            issueType: "NEW", deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", name: "", remark: ""
+        });
+        setIpConflict(null);
     }
+  };
 
-    setIsLoading(true); setLoaderText("數據封裝傳輸中...");
-    const baseApplicantName = applicant.split('#')[0].trim();
-    const finalArea = area === 'OTHER' ? areaOther.trim() : area;
+  /**
+   * 🚀 執行結案 (解決 TS2554 與 TS2345)
+   */
+  const handleFastIssue = async () => {
+    if (!formData.unit || !formData.sn || !formData.ip) return showToast("請補全單位、序號與 IP", "error");
+    if (ipConflict) return showToast("請先排除 IP 衝突", "error");
+    if (!formData.ext.includes("#")) return showToast("格式錯誤 (姓名#分機)", "error");
 
-    const batchData = rows.map((r) => ({
-      form_id: vdsId, install_date: selectedDate, area: finalArea, floor: formatFloor(floor), unit: unit.trim(),
-      applicant: r.ext.trim() ? `${baseApplicantName}#${r.ext.trim()}` : baseApplicantName,
-      model: r.model.trim(), sn: r.sn ? r.sn.toUpperCase().trim() : "", original_sn: r.originalSn || "",
-      mac1: r.mac1, mac2: r.mac2,
-      remark: (r.type === "REPLACE" ? "[REPLACE] 舊機汰換。" : "資產新購。") + (r.oldInfo ? r.oldInfo.trim() : ""),
-      vendor: vendorName, status: "待核定"
-    }));
+    setIsLoading(true);
+    setLoaderText("執行內部結案數據物理對沖...");
 
     try {
-      const res = await submitAssetBatch(batchData);
-      if (res.success) {
-        localStorage.removeItem(`AL_KEYIN_V0_${vendorName}`);
-        showToast("✅ 預約申請提交成功", "success");
-        setTimeout(() => window.location.reload(), 2000);
-      }
-    } catch (err: unknown) { 
-        showToast("傳輸中斷，請稍後再試", "error"); 
-    } finally { setIsLoading(false); }
+      // 🚀 物理映射：date -> installDate，解決 TS2345；僅傳遞 1 個物件，解決 TS2554
+      await submitInternalIssue({
+        installDate: formData.date,
+        area: formData.area,
+        floor: formatFloor(formData.floor),
+        unit: formData.unit,
+        ext: formData.ext,
+        type: formData.deviceType,
+        model: formData.model,
+        sn: formData.sn.toUpperCase(),
+        mac1: formData.mac1,
+        mac2: formData.mac2,
+        ip: formData.ip,
+        name: formData.name.toUpperCase(),
+        remark: formData.remark
+      });
+
+      const reportTxt = [
+        "【Asset-Link 內部快速結案報告】",
+        `執行日期: ${formData.date}`,
+        `裝機地點: ${formData.area}棟 ${formatFloor(formData.floor)}F`,
+        `使用單位: ${formData.unit}`,
+        `行政人員: ${formData.ext}`,
+        `核定 IP : ${formData.ip}`,
+        `物理序號: ${formData.sn.toUpperCase()}`,
+        `設備名稱: ${formData.name.toUpperCase()}`,
+        `業務性質: ${formData.issueType === "REPLACE" ? "舊機汰換" : "新購配發"}`,
+        "------------------------------",
+        "※ 此紀錄已成功物理寫入結案庫，無需審核。"
+      ].join("\n");
+
+      setReportModal({ isOpen: true, content: reportTxt });
+      showToast("內部結案入庫成功");
+    } catch (e) {
+      showToast("結案傳輸失敗", "error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="bg-[#f7f9fb] min-h-screen text-[#191c1e] font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC',system-ui] text-[10.5px] antialiased tracking-tight overflow-x-hidden">
-      <style dangerouslySetInnerHTML={{ __html: `
-        .glass-card { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 10px 30px rgba(0, 88, 188, 0.05); }
-        .saas-label { font-size: 10.5px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: block; }
-        .compact-input { width: 100%; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(226, 232, 240, 0.8); border-radius: 12px; padding: 10px 14px; font-size: 12px; font-weight: 700; color: #334155; transition: all 0.3s ease; }
-        .compact-input:focus { background: #ffffff; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); outline: none; }
-        .type-toggle { display: flex; padding: 4px; background: rgba(241, 245, 249, 0.6); border-radius: 12px; border: 1px solid rgba(226, 232, 240, 0.8); }
-        .type-btn { flex: 1; padding: 8px 0; font-size: 11px; font-weight: 800; color: #94a3b8; border-radius: 8px; transition: all 0.3s ease; }
-        .type-btn.active { background: #ffffff; color: #2563eb; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); border: 1px solid rgba(226, 232, 240, 0.8); }
-        .detail-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #f1f5f9; padding: 6px 0; }
-        .detail-key { font-weight: 800; color: #94a3b8; }
-        .detail-val { font-weight: 900; color: #334155; }
-      `}} />
+    <div className="bg-[#f2f5f8] min-h-screen flex text-[#1d1d1f] font-sans antialiased overflow-x-hidden relative">
+      
+      {/* 🚀 V5.1 發光裝飾球還原 */}
+      <div className="fixed z-0 blur-[100px] opacity-20 rounded-full pointer-events-none bg-blue-600 w-[600px] h-[600px] -top-48 -left-48 animate-pulse"></div>
+      <div className="fixed z-0 blur-[100px] opacity-20 rounded-full pointer-events-none bg-cyan-400 w-[500px] h-[500px] bottom-0 -right-48 animate-pulse"></div>
 
-      {/* 發光裝飾球 */}
-      <div className="fixed z-[-1] blur-[80px] opacity-25 rounded-full pointer-events-none bg-blue-600 w-[500px] h-[500px] -top-48 -left-48 animate-pulse"></div>
-      <div className="fixed z-[-1] blur-[80px] opacity-25 rounded-full pointer-events-none bg-cyan-400 w-[400px] h-[400px] top-1/2 -right-32 animate-pulse [animation-delay:2s]"></div>
+      <AdminSidebar currentRoute="/internal" isOpen={isSidebarOpen} onLogout={() => router.push("/")} />
 
-      <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} aria-label="打開選單" className="lg:hidden fixed top-4 left-4 z-[110] p-2.5 bg-white/70 backdrop-blur-md rounded-xl border border-white/60 shadow-sm active:scale-90 transition-transform">
-          <span className="material-symbols-outlined text-blue-600">menu</span>
-      </button>
+      <div className="flex-1 flex flex-col relative z-10">
+        <TopNavbar title="內部直通結案中心" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
 
-      {/* 物理還原：側邊欄 */}
-      <nav className={`fixed left-0 top-0 bottom-0 w-64 border-r border-white/40 bg-white/70 backdrop-blur-[30px] flex flex-col h-full py-6 px-4 z-[100] shadow-xl shadow-blue-900/5 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-          <div className="mb-10 px-4 mt-8 lg:mt-0">
-              <span className="text-2xl font-black bg-gradient-to-r from-blue-700 to-blue-500 bg-clip-text text-transparent tracking-tight">Asset-Link</span>
-              <p className="text-xs font-bold text-slate-400 tracking-widest mt-1 uppercase">基礎設施端填報 V6.0</p>
-          </div>
-          <div className="flex flex-col gap-1 flex-1">
-              <button onClick={() => setIsSidebarOpen(false)} className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600/10 text-blue-700 rounded-xl border-l-4 border-blue-600 font-bold shadow-sm"><span className="material-symbols-outlined">event_note</span>預約填報</button>
-              <button onClick={handleOpenProgress} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-slate-100/60 hover:translate-x-1 transition-all rounded-xl font-bold group"><span className="material-symbols-outlined group-hover:text-blue-500 transition-colors">manage_search</span>進度與全紀錄</button>
-          </div>
-          <div className="mt-auto flex flex-col gap-1 border-t border-slate-200/50 pt-4">
-              <button onClick={() => setConfirmDialog({ isOpen: true, title: "安全登出", message: "確定離開目前的錄入系統？", type: "info", onConfirm: () => router.push("/") })} className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-all rounded-xl font-bold"><span className="material-symbols-outlined text-[#ba1a1a]">logout</span>安全登出</button>
-          </div>
-      </nav>
-
-      {/* 物理還原：頂部 Header */}
-      <header className="fixed top-0 right-0 lg:left-64 left-0 z-40 flex items-center justify-between px-6 lg:px-8 bg-white/60 backdrop-blur-xl h-16 border-b border-white/50 shadow-sm">
-          <div className="flex items-center gap-4 pl-12 lg:pl-0">
-              <div className="tracking-tight text-lg lg:text-xl font-black text-blue-700 uppercase">物流調度錄入中樞</div>
-          </div>
-          <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3 ml-2 lg:border-l lg:pl-4 border-slate-200">
-                  <div className="text-right hidden sm:block">
-                      <p className="text-xs font-black uppercase tracking-wider">{vendorName}</p>
-                      <p className="text-[10px] text-emerald-600 font-bold">已通過物理安全校驗</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-blue-50 border-2 border-blue-200 shadow-sm flex items-center justify-center text-blue-600"><span className="material-symbols-outlined">precision_manufacturing</span></div>
-              </div>
-          </div>
-      </header>
-
-      {/* 主錄入區 */}
-      <main className="lg:ml-64 pt-24 px-4 sm:px-8 lg:px-10 pb-12">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <main className="p-6 lg:p-10 max-w-[1440px] mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+          
+          <div className="flex justify-between items-end mb-10 px-2">
               <div>
-                  <h1 className="text-3xl font-black text-blue-900 tracking-tight">設備預約填報</h1>
-                  <p className="text-sm font-bold text-slate-500 mt-1">請錄入裝機詳細參數與 MAC 位址，系統將進行 16 進位對沖校驗。</p>
+                  <h1 className="text-3xl font-black text-slate-800 tracking-tight">內部人員直通結案</h1>
+                  <p className="text-sm font-bold text-slate-500 mt-1 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                    Internal Direct-to-Archive Channel
+                  </p>
               </div>
-              <div className="flex gap-3 w-full sm:w-auto">
-                  <button onClick={clearAll} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-300 bg-white/50 text-slate-600 font-bold hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"><span className="material-symbols-outlined">delete_sweep</span>清空</button>
-                  <button onClick={handleSubmit} disabled={isLoading} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white font-black shadow-lg hover:shadow-blue-500/40 transition-all text-sm uppercase disabled:opacity-50"><span className="material-symbols-outlined">cloud_upload</span>確認提交</button>
-              </div>
+              <button onClick={handleClear} className="px-6 py-3 bg-white border border-slate-200 rounded-2xl font-black text-xs text-slate-400 hover:text-red-500 transition-all flex items-center gap-2 shadow-sm">
+                  <span className="material-symbols-outlined text-sm">refresh</span> 全部重設
+              </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              {/* 日曆與行政資訊 */}
-              <div className="col-span-1 md:col-span-4 space-y-6">
-                  <div className="glass-card p-6 sm:p-8 rounded-[2rem]">
-                      <div className="flex justify-between items-center mb-6">
-                          <h3 className="font-black text-slate-800 flex items-center gap-2 text-base"><span className="material-symbols-outlined text-blue-600">calendar_month</span>裝機日期</h3>
-                          <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">{new Date().getFullYear()}年 {new Date().getMonth() + 1}月</span>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* 左軌：裝機日曆與行政對沖 (佔 5 欄) */}
+              <div className="lg:col-span-5 space-y-8">
+                  
+                  {/* 🚀 物理年月日日曆 */}
+                  <section className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/40 border border-white relative overflow-hidden group">
+                      <div className="flex justify-between items-center mb-8 relative z-10">
+                          <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
+                              <span className="material-symbols-outlined">calendar_month</span> 裝機日期選擇
+                          </h3>
+                          <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
+                              <button onClick={() => setViewDate(new Date(viewDate.setMonth(viewDate.getMonth() - 1)))} className="w-8 h-8 rounded-full hover:bg-white hover:shadow-sm flex items-center justify-center transition-all">
+                                  <span className="material-symbols-outlined text-sm">chevron_left</span>
+                              </button>
+                              <span className="text-xs font-black text-slate-700 min-w-[100px] text-center">{viewDate.getFullYear()}年 {viewDate.getMonth() + 1}月</span>
+                              <button onClick={() => setViewDate(new Date(viewDate.setMonth(viewDate.getMonth() + 1)))} className="w-8 h-8 rounded-full hover:bg-white hover:shadow-sm flex items-center justify-center transition-all">
+                                  <span className="material-symbols-outlined text-sm">chevron_right</span>
+                              </button>
+                          </div>
                       </div>
-                      <div className="grid grid-cols-7 gap-1 text-center mb-4 text-xs font-bold text-slate-400">
-                          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
-                      </div>
-                      <div className="grid grid-cols-7 gap-1 text-center mb-4">
-                          {renderCalendarDays()}
-                      </div>
-                      <div className="mt-6 pt-6 border-t border-slate-200/50">
-                          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-2 block text-center">VDS 派工單號</span>
-                          <div className="compact-input font-mono text-sm text-center bg-slate-50/50 border-none">{vdsId}</div>
-                      </div>
-                  </div>
 
-                  <div className="glass-card p-6 sm:p-8 rounded-[2rem]">
-                      <h3 className="font-black text-slate-800 flex items-center gap-2 mb-6 text-base"><span className="material-symbols-outlined text-blue-600">apartment</span>行政資訊對沖</h3>
-                      <div className="space-y-5">
-                          <div className="grid grid-cols-2 gap-5">
-                              <div>
-                                  <label className="saas-label" htmlFor="area-select">棟別</label>
-                                  <select id="area-select" title="選擇棟別" value={area} onChange={(e) => setArea(e.target.value)} className="compact-input cursor-pointer">
-                                      {["A","B","C","D","E","G","H","I","K","T"].map((v) => <option key={v} value={v}>{v} 棟</option>)}
-                                      <option value="OTHER">其他</option>
-                                  </select>
-                                  {area === "OTHER" && <input id="area-other-input" value={areaOther} onChange={(e) => setAreaOther(e.target.value)} placeholder="手動輸入" className="compact-input mt-2" />}
+                      <div className="grid grid-cols-7 gap-2 text-center mb-4 relative z-10">
+                          {["日","一","二","三","四","五","六"].map(w => <div key={w} className="text-[10px] font-black text-slate-300 uppercase tracking-tighter">{w}</div>)}
+                      </div>
+                      <div className="grid grid-cols-7 gap-2 text-center relative z-10">
+                          {calendarDays.map((d, i) => (
+                              <div key={i} 
+                                   onClick={() => d && setFormData({...formData, date: d})}
+                                   className={`h-11 flex items-center justify-center text-sm rounded-2xl cursor-pointer transition-all ${!d ? 'invisible' : d === formData.date ? 'bg-blue-600 text-white font-black shadow-lg shadow-blue-200 scale-105' : 'text-slate-500 hover:bg-blue-50 font-bold'}`}>
+                                  {d ? d.split('-')[2] : ''}
                               </div>
-                              <div>
-                                  <label className="saas-label" htmlFor="floor-input">樓層</label>
-                                  <input id="floor-input" value={floor} onBlur={(e) => setFloor(formatFloor(e.target.value))} onChange={(e) => setFloor(e.target.value)} className="compact-input" placeholder="例: 05" />
-                              </div>
-                          </div>
-                          <div>
-                              <label className="saas-label" htmlFor="unit-input">單位 (F)</label>
-                              <input id="unit-input" value={unit} onChange={(e) => setUnit(e.target.value)} className="compact-input" placeholder="單位全銜" />
-                          </div>
-                          <div>
-                              <label className="saas-label !text-blue-600" htmlFor="applicant-input">姓名 (G)</label>
-                              <input id="applicant-input" value={applicant} onChange={(e) => setApplicant(e.target.value)} className="compact-input bg-blue-50/30" placeholder="填報人員" />
+                          ))}
+                      </div>
+                      <div className="mt-8 pt-6 border-t border-slate-50 flex justify-between items-center px-4">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">已鎖定日期</span>
+                          <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                              <span className="text-sm font-mono font-black text-blue-600 tracking-wider">{formData.date}</span>
                           </div>
                       </div>
-                  </div>
+                  </section>
+
+                  {/* 裝機地點與人員 (實裝空格轉#) */}
+                  <section className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/40 space-y-6 border border-white">
+                      <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest flex items-center gap-2 mb-4">
+                          <span className="material-symbols-outlined font-black">domain</span> 裝機地點與人員對沖
+                      </h3>
+                      <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="area-sel">裝機棟別</label>
+                              <select id="area-sel" title="棟別" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold text-sm shadow-inner">
+                                  {["A","B","C","D","E","G","H","I","K","T"].map(v => <option key={v} value={v}>{v} 棟</option>)}
+                              </select>
+                          </div>
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="floor-in">樓層</label>
+                              <input id="floor-in" value={formData.floor} onChange={e => setFormData({...formData, floor: e.target.value})} onBlur={e => setFormData({...formData, floor: formatFloor(e.target.value)})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold text-sm shadow-inner" placeholder="05" />
+                          </div>
+                      </div>
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-blue-600 uppercase ml-1 block" htmlFor="ext-in">人員分機 (物理自動化)</label>
+                          <input id="ext-in" value={formData.ext} onChange={e => handleExtChange(e.target.value)} className="w-full bg-blue-50/50 border-none rounded-2xl px-5 py-4 font-black text-sm text-blue-700 placeholder:text-blue-200 shadow-inner" placeholder="姓名 分機 (按下空格自動轉換)" title="人員資訊" />
+                      </div>
+                      <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block" htmlFor="unit-in">裝機單位全稱</label>
+                          <input id="unit-in" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-black text-slate-800 shadow-inner" placeholder="例如: 資訊組" />
+                      </div>
+                  </section>
               </div>
 
-              {/* 設備清單 */}
-              <div className="col-span-1 md:col-span-8">
-                  <div className="space-y-5">
-                      {rows.map((r, i) => (
-                        <div key={r.id} className="glass-card p-6 md:p-7 border-l-[8px] border-l-blue-600 relative animate-in slide-in-from-left-4 duration-300 rounded-[1.8rem]">
-                            {rows.length > 1 && (
-                                <button onClick={() => setRows(rows.filter(row => row.id !== r.id))} aria-label="移除此設備" className="absolute -top-3 -right-3 w-8 h-8 bg-white text-slate-400 hover:text-white hover:bg-red-500 rounded-full flex items-center justify-center shadow-md border border-slate-100 transition-all">
-                                    <span className="material-symbols-outlined text-sm">close</span>
-                                </button>
-                            )}
-                            
-                            {r.originalSn && (
-                                <div className="mb-4 inline-flex items-center gap-2 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg border border-amber-200">
-                                    <span className="material-symbols-outlined text-sm">sync_saved_locally</span>
-                                    <span className="text-[10px] font-black uppercase tracking-widest">修正中: 物理覆蓋紀錄 {r.originalSn}</span>
-                                </div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 md:gap-6">
-                                <div className="col-span-1 md:col-span-4">
-                                    <span className="saas-label block">業務性質</span>
-                                    <div className="type-toggle">
-                                        <button onClick={() => { const n = [...rows]; n[i].type = "NEW"; setRows(n); }} className={`type-btn ${r.type === 'NEW' ? 'active' : ''}`}>🆕 新購配發</button>
-                                        <button onClick={() => { const n = [...rows]; n[i].type = "REPLACE"; setRows(n); }} className={`type-btn ${r.type === 'REPLACE' ? 'active !text-orange-600' : ''}`}>🔄 舊機汰換</button>
-                                    </div>
-                                </div>
-                                <div className="col-span-1 md:col-span-2">
-                                    <label className="saas-label" htmlFor={`ext-${r.id}`}>分機</label>
-                                    <input id={`ext-${r.id}`} value={r.ext} onChange={(e) => { const n = [...rows]; n[i].ext = e.target.value; setRows(n); }} className="compact-input font-mono" />
-                                </div>
-                                <div className="col-span-1 md:col-span-6">
-                                    <label className="saas-label" htmlFor={`model-${r.id}`}>品牌型號 (I)</label>
-                                    <input id={`model-${r.id}`} value={r.model} onChange={(e) => { const n = [...rows]; n[i].model = e.target.value; setRows(n); }} className="compact-input" placeholder="例如: ASUS D700" />
-                                </div>
-                                <div className="col-span-1 md:col-span-12">
-                                    <label className="saas-label !text-red-500" htmlFor={`sn-${r.id}`}>產品序號 S/N (J)</label>
-                                    <input id={`sn-${r.id}`} value={r.sn} onChange={(e) => { const n = [...rows]; n[i].sn = e.target.value.toUpperCase(); setRows(n); }} className="compact-input font-mono uppercase bg-white/90 text-red-600" maxLength={12} placeholder="點擊掃描或手動輸入序號" />
-                                </div>
-                                  
-                                {r.type === "REPLACE" && (
-                                  <div className="col-span-1 md:col-span-12 animate-in fade-in">
-                                      <div className="p-4 bg-amber-50/40 rounded-2xl border border-amber-200/50">
-                                          <label className="saas-label !text-amber-700 italic" htmlFor={`old-${r.id}`}>原舊機資訊 (以便封存)</label>
-                                          <input id={`old-${r.id}`} value={r.oldInfo} onChange={(e) => { const n = [...rows]; n[i].oldInfo = e.target.value; setRows(n); }} className="compact-input" placeholder="提供舊機 IP、名稱或財編" />
-                                      </div>
+              {/* 右軌：技術參數對沖 (佔 7 欄) */}
+              <div className="lg:col-span-7">
+                  <section className="bg-slate-900 rounded-[3rem] p-10 shadow-2xl space-y-8 relative overflow-hidden group h-full flex flex-col">
+                      <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full -mr-40 -mt-40 group-hover:scale-150 transition-transform duration-1000"></div>
+                      <h3 className="text-sm font-black text-blue-400 uppercase tracking-[0.4em] flex items-center gap-3 mb-8 relative z-10">
+                          <span className="material-symbols-outlined text-blue-400 font-black">memory</span> 物理技術參數對沖
+                      </h3>
+                      
+                      <div className="space-y-8 relative z-10 flex-1">
+                          <div className="grid grid-cols-2 gap-8">
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block">業務性質</label>
+                                  <div className="flex bg-slate-800 p-1.5 rounded-2xl">
+                                      <button onClick={() => setFormData({...formData, issueType: "NEW"})} className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${formData.issueType === 'NEW' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>新購配發</button>
+                                      <button onClick={() => setFormData({...formData, issueType: "REPLACE"})} className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${formData.issueType === 'REPLACE' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500'}`}>舊機汰換</button>
                                   </div>
-                                )}
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="type-sel">設備類型</label>
+                                  <select id="type-sel" title="類型" value={formData.deviceType} onChange={e => setFormData({...formData, deviceType: e.target.value})} className="w-full bg-slate-800 border-none rounded-2xl px-5 py-4 text-white font-bold text-sm outline-none focus:ring-1 focus:ring-blue-500">
+                                      <option>桌上型電腦</option><option>筆記型電腦</option><option>伺服器</option><option>印表機</option><option>網路設備</option>
+                                  </select>
+                              </div>
+                          </div>
 
-                                <div className="col-span-1 md:col-span-6">
-                                    <label className="saas-label !text-blue-500" htmlFor={`mac1-${r.id}`}>主要有線 MAC</label>
-                                    <input id={`mac1-${r.id}`} value={r.mac1} onChange={(e) => { const n = [...rows]; n[i].mac1 = handleMacInput(e.target.value); setRows(n); }} className="compact-input font-mono uppercase" maxLength={17} placeholder="XX:XX:XX:XX:XX:XX" />
-                                </div>
-                                <div className="col-span-1 md:col-span-6">
-                                    <label className="saas-label !text-emerald-500" htmlFor={`mac2-${r.id}`}>無線網卡 MAC</label>
-                                    <input id={`mac2-${r.id}`} value={r.mac2} onChange={(e) => { const n = [...rows]; n[i].mac2 = handleMacInput(e.target.value); setRows(n); }} className="compact-input font-mono uppercase" maxLength={17} placeholder="無則免填" />
-                                </div>
-                            </div>
-                        </div>
-                      ))}
+                          <div className="grid grid-cols-2 gap-8">
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="model-in">品牌型號</label>
+                                  <input id="model-in" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} className="w-full bg-slate-800 border-none rounded-2xl px-5 py-4 text-white font-bold text-sm shadow-inner" placeholder="ASUS D700" />
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-red-500 uppercase ml-1 block" htmlFor="sn-in">物理序號 (S/N)</label>
+                                  <input id="sn-in" value={formData.sn} onChange={e => setFormData({...formData, sn: e.target.value.toUpperCase()})} className="w-full bg-slate-800 border-none rounded-2xl px-5 py-4 text-red-400 font-mono font-black shadow-inner" placeholder="序號強制大寫" />
+                              </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-8">
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="mac1-in">主要 MAC (有線)</label>
+                                  <input id="mac1-in" value={formData.mac1} onChange={e => handleMacInput('mac1', e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl px-5 py-4 text-blue-400 font-mono text-xs font-black shadow-inner" placeholder="XX:XX:XX..." />
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="mac2-in">無線 MAC (選填)</label>
+                                  <input id="mac2-in" value={formData.mac2} onChange={e => handleMacInput('mac2', e.target.value)} className="w-full bg-slate-800 border-none rounded-2xl px-5 py-4 text-emerald-400 font-mono text-xs font-black shadow-inner" placeholder="選填項目" />
+                              </div>
+                          </div>
+                          
+                          <div className="pt-8 border-t border-slate-800/60 space-y-8 mt-4">
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-blue-500 uppercase ml-1 block" htmlFor="ip-in">核定固定 IP (即時對沖)</label>
+                                  <input id="ip-in" value={formData.ip} onChange={e => setFormData({...formData, ip: e.target.value})} onBlur={handleIpBlur} className={`w-full border-none rounded-3xl px-8 py-6 font-mono font-black text-2xl transition-all shadow-2xl ${ipConflict ? 'bg-red-900/40 text-red-200 ring-2 ring-red-500' : 'bg-slate-800 text-blue-400 focus:ring-2 focus:ring-blue-600'}`} placeholder="10.X.X.X" />
+                                  {ipConflict && <p className="text-[10px] text-red-500 font-black mt-3 animate-bounce">{ipConflict}</p>}
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 block" htmlFor="name-in">物理設備名稱標記</label>
+                                  <input id="name-in" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})} className="w-full bg-slate-800 border-none rounded-2xl px-5 py-4 text-white font-black tracking-widest shadow-inner" placeholder="例如: INF-PC-01" />
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="pt-4 relative z-10">
+                          <button onClick={handleFastIssue} disabled={isLoading || !!ipConflict} className="w-full py-7 bg-white text-slate-900 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.4em] shadow-2xl active:scale-95 hover:bg-blue-50 transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-4">
+                              <span className="material-symbols-outlined text-blue-600 font-black">verified</span>
+                              執行內部快速結案並物理存檔
+                          </button>
+                      </div>
+                  </section>
+              </div>
+          </div>
+        </main>
+      </div>
+
+      {/* 🚀 物理結案報告 Modal (對話框還原) */}
+      {reportModal.isOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-xl rounded-[3.5rem] p-12 shadow-2xl animate-in zoom-in-95 border-t-[12px] border-t-blue-600 relative overflow-hidden">
+              <div className="text-center mb-10">
+                  <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-6 shadow-inner border border-blue-100">
+                      <span className="material-symbols-outlined text-6xl font-black">check_circle</span>
                   </div>
-                  <button onClick={() => setRows([...rows, { id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }])} className="mt-5 w-full py-8 border-2 border-dashed border-blue-300 rounded-[2rem] flex flex-col items-center justify-center text-blue-600 bg-blue-50/40 hover:bg-blue-100 transition-all font-black text-sm group shadow-sm">
-                      <span className="material-symbols-outlined text-4xl mb-2 group-hover:scale-110 transition-transform">add_circle</span>
-                      增加設備填報項目
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">結案報告物理生成成功</h2>
+                  <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">Archived Successfully</p>
+              </div>
+              <div className="bg-slate-50 rounded-[2rem] p-8 font-mono text-[11px] text-slate-700 leading-relaxed whitespace-pre-wrap border border-slate-100 mb-10 shadow-inner select-all">
+                  {reportModal.content}
+              </div>
+              <div className="flex gap-4">
+                  <button onClick={() => {
+                      const el = document.createElement('textarea');
+                      el.value = reportModal.content;
+                      document.body.appendChild(el);
+                      el.select();
+                      document.execCommand('copy');
+                      document.body.removeChild(el);
+                      showToast("結案報告已物理複製", "success");
+                  }} className="flex-1 py-5 bg-blue-600 text-white text-xs font-black rounded-2xl shadow-xl shadow-blue-900/20 active:scale-95 transition-all uppercase tracking-widest flex items-center justify-center gap-3">
+                      <span className="material-symbols-outlined text-lg">content_copy</span> 物理複製內容
+                  </button>
+                  <button onClick={() => window.location.reload()} className="flex-1 py-5 bg-slate-100 text-slate-600 text-xs font-black rounded-2xl active:scale-95 transition-all uppercase tracking-widest">
+                      完成並關閉
                   </button>
               </div>
           </div>
-      </main>
-
-      {/* 🚀 進度與全資料查詢彈窗 (對接單筆全資料功能) */}
-      {isProgressOpen && (
-        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 fade-enter">
-            <div className="glass-card w-full max-w-4xl rounded-[2.5rem] p-6 shadow-2xl flex flex-col max-h-[90vh] bg-white/95">
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg"><span className="material-symbols-outlined text-[26px]">manage_search</span></div>
-                        <div><h2 className="text-xl font-black text-slate-800 tracking-tighter">進度查詢與單筆全資料</h2><p className="text-[10px] font-bold text-blue-600 uppercase">{vendorName} 的全紀錄軌跡</p></div>
-                    </div>
-                    <button onClick={() => setIsProgressOpen(false)} aria-label="關閉" className="w-10 h-10 rounded-full bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-500 flex items-center justify-center transition-colors">
-                        <span className="material-symbols-outlined text-xl">close</span>
-                    </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-                    {isProgressLoading ? (
-                        <div className="py-24 text-center opacity-60"><div className="w-10 h-10 border-4 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div><p className="text-[11px] font-black uppercase text-slate-600">載入單筆全資料中...</p></div>
-                    ) : progressData.length === 0 ? (
-                        <div className="py-24 text-center opacity-50"><span className="material-symbols-outlined text-5xl mb-3">inbox</span><p className="text-xs font-black uppercase text-slate-500">查無紀錄 (僅顯示近一個月安裝)</p></div>
-                    ) : (
-                        progressData.map((item, idx) => (
-                            <div key={idx} className={`p-5 rounded-2xl flex flex-col transition-all border mb-3 group ${expandedId === item.sn ? 'bg-white shadow-xl border-blue-200' : 'bg-slate-50/50 border-slate-200 hover:shadow-md'}`}>
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-sm font-black text-slate-800 font-mono uppercase tracking-tighter">{item.sn}</span>
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black border uppercase tracking-widest ${
-                                            item.status === '待核定' ? 'bg-slate-200 text-slate-600 border-slate-300' : 
-                                            item.status === '退回修正' ? 'bg-red-50 text-red-600 border-red-200' : 
-                                            item.status === '已結案' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                            'bg-blue-50 text-blue-600 border-blue-200 animate-pulse'
-                                        }`}>
-                                            {item.status}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-4 text-[11px] font-bold text-slate-500">
-                                        <span className="hidden sm:inline">{item.date} | {item.unit}</span>
-                                        <button onClick={() => setExpandedId(expandedId === item.sn ? null : item.sn)} className="flex items-center gap-1 text-blue-600 font-black">
-                                            {expandedId === item.sn ? '收起詳情' : '查看全資料'}
-                                            <span className="material-symbols-outlined text-sm">{expandedId === item.sn ? 'expand_less' : 'expand_more'}</span>
-                                        </button>
-                                    </div>
-                                </div>
-                                  
-                                {/* 🚀 單筆案件全資料展示區塊 (展開後呈現所有物理欄位) */}
-                                {expandedId === item.sn && (
-                                    <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1">
-                                            <div className="detail-row"><span className="detail-key">案件單號：</span><span className="detail-val">{item.formId}</span></div>
-                                            <div className="detail-row"><span className="detail-key">裝機日期：</span><span className="detail-val">{item.date}</span></div>
-                                            <div className="detail-row"><span className="detail-key">棟別樓層：</span><span className="detail-val">{item.area} 棟 / {item.floor}</span></div>
-                                            <div className="detail-row"><span className="detail-key">使用單位：</span><span className="detail-val">{item.unit}</span></div>
-                                            <div className="detail-row"><span className="detail-key">填報人員：</span><span className="detail-val">{item.applicantFull}</span></div>
-                                            <div className="detail-row"><span className="detail-key">設備型號：</span><span className="detail-val">{item.model}</span></div>
-                                            <div className="detail-row"><span className="detail-key">主要 MAC：</span><span className="detail-val font-mono">{item.mac1}</span></div>
-                                            <div className="detail-row"><span className="detail-key">無線 MAC：</span><span className="detail-val font-mono">{item.mac2 || '無'}</span></div>
-                                            <div className="detail-row col-span-1 sm:col-span-2"><span className="detail-key">原始備註：</span><span className="detail-val">{item.remark}</span></div>
-                                        </div>
-
-                                        {item.status === '退回修正' && (
-                                            <div className="mt-4 bg-red-50 p-4 rounded-xl border border-red-100">
-                                                <div className="flex items-center gap-2 text-xs font-black text-red-600 mb-3"><span className="material-symbols-outlined text-base">error</span>退回原因：{item.rejectReason}</div>
-                                                <button onClick={() => handleLoadRejected(item)} className="w-full py-2.5 bg-red-600 text-white rounded-lg font-black text-xs uppercase hover:bg-red-700 shadow-md">載入資料並進行物理修正</button>
-                                            </div>
-                                        )}
-
-                                        {(item.status === '已核定(待確認)' || item.status === '已結案') && (
-                                            <div className="mt-4 bg-blue-50 p-4 rounded-xl border border-blue-100">
-                                                <p className="text-[10px] font-black text-blue-600 mb-2 uppercase tracking-widest">資訊室核發資料</p>
-                                                <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                                                    <div className="flex-1 bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
-                                                        <span className="detail-key block text-[9px]">核定 IP</span>
-                                                        <span className="detail-val text-sm font-black text-blue-800">{item.assignedIp}</span>
-                                                    </div>
-                                                    <div className="flex-1 bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
-                                                        <span className="detail-key block text-[9px]">標記名稱</span>
-                                                        <span className="detail-val text-sm font-black text-blue-800">{item.assignedName}</span>
-                                                    </div>
-                                                </div>
-                                                {item.status === '已核定(待確認)' && (
-                                                    <button onClick={() => handleConfirmAsset(item.sn)} className="w-full py-3 bg-blue-600 text-white rounded-lg font-black text-xs uppercase hover:bg-blue-700 shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95">
-                                                       <span className="material-symbols-outlined text-[18px]">task_alt</span>確認結果並正式結案
-                                                    </button>
-                                                )}
-                                                {item.status === '已結案' && <p className="text-[10px] text-emerald-600 font-black italic text-right">※ 歷史紀錄已物理存檔至大數據庫</p>}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
         </div>
       )}
 
-      {/* 確認彈窗 */}
-      {confirmDialog.isOpen && (
-        <div className="fixed inset-0 z-[2000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 fade-enter">
-           <div className={`glass-card w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl bg-white/95 border-t-[8px] ${confirmDialog.type === 'danger' ? 'border-t-[#ba1a1a]' : 'border-t-blue-500'}`}>
-              <div className="p-8 text-center space-y-6">
-                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto border ${confirmDialog.type === 'danger' ? 'bg-red-50 text-[#ba1a1a] border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                   <span className="material-symbols-outlined text-3xl font-black">{confirmDialog.type === 'danger' ? 'warning' : 'help'}</span>
-                 </div>
-                 <h2 className="text-xl font-black text-slate-800 tracking-tighter">{confirmDialog.title}</h2>
-                 <p className="text-xs font-bold text-slate-500 leading-relaxed">{confirmDialog.message}</p>
-                 <div className="flex gap-3 pt-2">
-                    <button onClick={() => setConfirmDialog(prev => ({...prev, isOpen: false}))} className="flex-1 py-3.5 bg-slate-100 rounded-xl font-black text-slate-600 uppercase">取消</button>
-                    <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({...prev, isOpen: false})); }} className={`flex-1 py-3.5 text-white rounded-xl font-black uppercase transition-transform active:scale-95 ${confirmDialog.type === 'danger' ? 'bg-[#ba1a1a]' : 'bg-blue-600'}`}>確認執行</button>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {/* 全域 Loading */}
+      {/* 強同步全域遮罩 */}
       {isLoading && (
-        <div className="fixed inset-0 bg-white/80 z-[600] flex flex-col items-center justify-center backdrop-blur-md">
-            <div className="w-12 h-12 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin mb-4 shadow-lg"></div>
-            <p className="text-blue-600 font-black tracking-widest uppercase animate-pulse">{loaderText}</p>
+        <div className="fixed inset-0 z-[2000] flex flex-col items-center justify-center bg-white/90 backdrop-blur-xl">
+           <div className="w-16 h-16 border-[6px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-8 shadow-2xl"></div>
+           <p className="text-sm font-black text-blue-600 uppercase tracking-[0.5em] animate-pulse">{loaderText}</p>
         </div>
       )}
 
-      {/* Toast 提示容器 */}
-      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[700] flex flex-col gap-2 pointer-events-none w-full max-w-[340px] px-4">
-        {toasts.map(t => (
-            <div key={t.id} className={`px-6 py-4 rounded-2xl text-xs font-black text-white shadow-2xl animate-in slide-in-from-bottom flex items-center gap-3 ${t.type === 'error' ? 'bg-red-600' : t.type === 'info' ? 'bg-slate-900/90' : 'bg-emerald-600/90'}`}>
-                <span className="material-symbols-outlined text-base">info</span>
-                <span>{t.msg}</span>
+      {/* 物理通知氣泡 */}
+      {toast && (
+        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[2100] px-10 py-6 rounded-[2.5rem] shadow-2xl font-black text-xs text-white flex items-center gap-5 animate-in slide-in-from-bottom duration-500 bg-slate-900/95 backdrop-blur-md border border-white/10">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg ${toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
+                <span className="material-symbols-outlined text-lg text-white">{toast.type === 'success' ? 'done_all' : 'error'}</span>
             </div>
-        ))}
-      </div>
+            <span className="tracking-wide text-sm font-bold ml-2">{toast.msg}</span>
+        </div>
+      )}
     </div>
-  );
-}
-
-export default function App() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#f8fafc]"><div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div></div>}>
-      <KeyinContent />
-    </Suspense>
   );
 }
