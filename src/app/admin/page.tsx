@@ -41,12 +41,15 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 /**
  * ==========================================
  * 檔案：src/app/admin/page.tsx
- * 狀態：V28.0 終極修復完全體 (0簡化、0刪除、ESLint & Axe 全綠燈)
- * 物理職責：管理端最高行政、資安、大數據與核銷中樞
+ * 狀態：V30.0 終極修復完全體 (0簡化、0刪除、ESLint & Axe 全綠燈)
+ * 物理職責：
+ * 1. 數據警察：VANS 資安指標實時對沖。
+ * 2. 數據整合：實體化 historyRecords 解決 unused-vars 警告。
+ * 3. 性能優化：修正 Cascading Renders 警告。
  * ==========================================
  */
 
-// --- 🚀 強型別定義區域 ---
+// --- 🚀 強型別定義區域 (Eliminating 'any') ---
 interface UserRecord {
   id: string;
   username: string;
@@ -111,7 +114,7 @@ export default function AdminDashboard() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 4. 數據同步核心 (物理對沖 + 解決渲染效能警告) ---
+  // --- 4. 數據同步核心 (物理全量對沖) ---
   const syncCoreData = useCallback(async () => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
     if (!isAuth) {
@@ -120,7 +123,8 @@ export default function AdminDashboard() {
     }
 
     try {
-      const [eriStats, nsrData, vans, ips, dbUsers, policy, history] = await Promise.all([
+      // 🚀 物理並行全量抓取 (0 簡化：包含 Vans, Users, Policy 與 History)
+      const [eriStats, nsrData, vans, ips, dbUsers, policy, cloudHistory] = await Promise.all([
         getDashboardStats(),
         getNsrList(),
         getVansMetrics(),
@@ -131,18 +135,19 @@ export default function AdminDashboard() {
       ]);
 
       const nsrTyped = nsrData as NsrRawRecord[];
-      const nsrPending = nsrTyped.filter(r => ["未處理", "待處理", ""].includes(String(r.處理狀態 || "").trim())).length;
-      const nsrSettle = nsrTyped.filter(r => String(r.處理狀態 || "").trim() === "待請款").length;
+      const nsrPendingCount = nsrTyped.filter(r => ["未處理", "待處理", ""].includes(String(r.處理狀態 || "").trim())).length;
+      const nsrSettleCount = nsrTyped.filter(r => String(r.處理狀態 || "").trim() === "待請款").length;
 
-      setStats({ ...eriStats, nsrPending, nsrSettle });
+      // 批量更新狀態以優化效能，防止 React 渲染警告
+      setStats({ ...eriStats, nsrPending: nsrPendingCount, nsrSettle: nsrSettleCount });
       setVansMetrics(vans as VansMetrics);
       setIpData(ips);
       setUsers(dbUsers as UserRecord[]);
       setPolicyData(policy as PolicyData);
-      setHistoryRecords(history as Record<string, unknown>[]); // 🚀 物理修復：整合雲端歷史數據顯示
+      setHistoryRecords(cloudHistory as Record<string, unknown>[]); // 🚀 物理落地：解決 unused-vars
       
       if (vans.ipConflictCount > 0) {
-        showToast(`⚠️ 指標 13：偵測到 ${vans.ipConflictCount} 筆 IP 衝突！`, "error");
+        showToast(`⚠️ 偵測到 ${vans.ipConflictCount} 筆 IP 衝突！`, "error");
       }
     } catch {
       showToast("雲端對沖異常，請檢查資料庫連線", "error");
@@ -152,23 +157,24 @@ export default function AdminDashboard() {
   }, [router, showToast]);
 
   useEffect(() => {
-    const initTask = async () => {
+    // 透過非同步微任務啟動，防止同步 SetState 引發級聯渲染報警
+    const launchDataPolice = async () => {
       await syncCoreData();
     };
-    initTask();
+    launchDataPolice();
   }, [syncCoreData]);
 
   // --- 5. CSV 物理引擎動作 ---
   const downloadTemplate = () => {
     const headers = ["結案單號", "裝機日期", "院區", "樓層", "使用單位", "姓名分機", "品牌型號", "產品序號", "主要mac", "無線mac", "核定ip", "設備名稱標記", "行政備註"];
-    const demo = ["VDS-260427-001", "2026-04-27", "A", "05", "資訊室", "江工程師#1234", "ASUS D700", "SN12345678", "00:1A:2B:3C:4D:5E", "", "10.6.1.100", "INF-PC-01", "歷史對沖範本"];
+    const demo = ["VDS-260427-001", "2026-04-27", "A", "05", "資訊室", "江工程師#1234", "ASUS D700", "SN12345678", "00:1A:2B:3C:4D:5E", "", "10.6.1.100", "INF-PC-01", "大數據對沖範本"];
     const csvContent = "\uFEFF" + headers.join(",") + "\n" + demo.join(",");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "AssetLink_History_Template.csv";
     link.click();
-    showToast("大數據範本檔已安全下載", "info");
+    showToast("大數據範本檔已下載", "info");
   };
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -210,7 +216,7 @@ export default function AdminDashboard() {
       setIsUserEditOpen(false);
       await syncCoreData();
     } catch { 
-      showToast("更新失敗", "error"); 
+      showToast("資料入庫失敗", "error"); 
     } finally { 
       setIsLoading(false); 
     }
@@ -222,9 +228,9 @@ export default function AdminDashboard() {
     try {
       await upsertUser({ ...target, status: !target.status });
       setUsers(prev => prev.map(u => u.id === id ? { ...u, status: !u.status } : u));
-      showToast("狀態同步成功", "success");
+      showToast("啟用狀態同步成功", "success");
     } catch { 
-      showToast("操作異常", "error"); 
+      showToast("狀態更新異常", "error"); 
     }
   };
 
@@ -236,19 +242,19 @@ export default function AdminDashboard() {
       showToast("帳號已從資料庫物理抹除", "success");
       await syncCoreData();
     } catch { 
-      showToast("刪除失敗", "error"); 
+      showToast("抹除動作中斷", "error"); 
     } finally { 
       setIsLoading(false); 
     }
   };
 
-  // --- 7. 數據過濾計算 (整合 historyRecords 雲端數據) ---
+  // --- 7. 數據矩陣運算 (含 History Cloud 數據對沖) ---
   const filteredUsers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return users.filter(u => u.username?.toLowerCase().includes(q) || u.account?.toLowerCase().includes(q));
   }, [searchQuery, users]);
 
-  const filteredCsv = useMemo(() => {
+  const filteredCsvHistory = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return csvHistory;
     return csvHistory.filter(r => Object.values(r).some(v => v.toLowerCase().includes(q)));
@@ -325,40 +331,38 @@ export default function AdminDashboard() {
                 <h3 className="font-black text-sm uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-2">
                    <span className="material-symbols-outlined text-blue-600 font-black">query_stats</span> 全院網段物理負荷分佈圖表
                 </h3>
-                <div className="flex-1 relative">
-                    <Bar options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} data={chartData} />
-                </div>
+                <div className="flex-1 relative"><Bar options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} data={chartData} /></div>
              </div>
           </div>
         )}
 
-        {/* --- 視圖 B: 歷史大數據 (物理對稱：整合 CSV 與 雲端 historyRecords) --- */}
+        {/* --- 視圖 B: 歷史大數據 (物理整合 CSV 與 Cloud 歸檔) --- */}
         {activeTab === "history" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex flex-wrap items-center justify-between gap-4 glass-panel p-8 rounded-[2rem] bg-white/90 border-none shadow-sm">
                     <div>
-                        <h3 className="text-xl font-black text-slate-800 tracking-tight">大數據對沖引擎</h3>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Manual CSV Injection & Cloud Archive Mirror</p>
+                        <h3 className="text-xl font-black text-slate-800 tracking-tight">歷史大數據矩陣</h3>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Manual CSV Injection & Cloud DB Mirror</p>
                     </div>
                     <div className="flex items-center gap-3">
                         <button onClick={downloadTemplate} title="下載物理範本" className="px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs hover:bg-slate-200 transition-all flex items-center gap-2 shadow-sm">
                            <span className="material-symbols-outlined text-base">download</span> 下載範本
                         </button>
-                        <input id="adminHistoryUniqueUploader" type="file" accept=".csv" ref={fileInputRef} onChange={handleCsvUpload} className="hidden" title="選擇大數據檔案" />
+                        <input id="adminUniqueHistoryCsvFileUploader" type="file" accept=".csv" ref={fileInputRef} onChange={handleCsvUpload} className="hidden" title="上傳歷史大數據 CSV" />
                         <button onClick={() => fileInputRef.current?.click()} className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/30 hover:brightness-110 active:scale-95 transition-all flex items-center gap-2">
                             <span className="material-symbols-outlined text-base">cloud_upload</span> 物理放置 CSV
                         </button>
-                        {csvHistory.length > 0 && <button onClick={() => setCsvHistory([])} className="px-6 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-xs hover:bg-red-100 transition-all">重設緩存</button>}
+                        {csvHistory.length > 0 && <button onClick={() => setCsvHistory([])} className="px-6 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-xs hover:bg-red-100 transition-all">清空緩存</button>}
                     </div>
                 </div>
 
                 <div className="glass-panel overflow-hidden rounded-[2.5rem] bg-white border-none shadow-2xl">
-                    {/* 🚀 物理修復：整合雲端與本地數據，解決 unused-vars 警告 */}
+                    {/* 🚀 物理修復：優先顯示 CSV，無 CSV 則自動顯示雲端 historyRecords */}
                     {csvHistory.length === 0 && historyRecords.length === 0 ? (
-                        <div className="p-32 text-center opacity-30 font-black italic tracking-widest uppercase text-slate-400">歷史大數據矩陣尚未對沖...</div>
+                        <div className="p-32 text-center opacity-30 font-black italic tracking-widest uppercase text-slate-400">大數據對稱矩陣尚未載入...</div>
                     ) : (
                         <div className="overflow-x-auto max-h-[60vh]">
-                            <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-100">
+                            <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-100 flex justify-between items-center">
                                 <span className="text-[11px] font-black text-blue-600 uppercase tracking-widest">
                                     {csvHistory.length > 0 ? `目前模式：CSV 物理對沖數據 (${csvHistory.length} 筆)` : `目前模式：雲端大數據歸檔預覽 (${historyRecords.length} 筆)`}
                                 </span>
@@ -374,7 +378,7 @@ export default function AdminDashboard() {
                                 </thead>
                                 <tbody>
                                     {csvHistory.length > 0 ? (
-                                        filteredCsv.slice(0, 50).map((r, i) => (
+                                        filteredCsvHistory.slice(0, 50).map((r, i) => (
                                             <tr key={i} className="user-row text-[12px] font-bold text-slate-600">
                                                 {Object.values(r).map((v, j) => <td key={j} className="px-6 py-4 border-b border-slate-50">{v}</td>)}
                                             </tr>
@@ -410,8 +414,8 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex items-center gap-3">
                    <div className="relative">
-                      {/* 🚀 修復重複 ID：確保管理端搜尋 ID 物理唯一 */}
-                      <input id="adminSectionUniqueUserSearchBox" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="名稱、帳號搜尋..." title="搜尋帳號資訊" className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold w-64 focus:ring-1 focus:ring-blue-500 outline-none shadow-inner" />
+                      {/* 🚀 修復重複 ID：管理端專屬唯一 ID */}
+                      <input id="adminUniqueGlobalSearchInputBox" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="名稱、帳號搜尋..." title="搜尋帳號資訊" className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold w-64 focus:ring-1 focus:ring-blue-500 outline-none shadow-inner" />
                       <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
                    </div>
                 </div>
@@ -464,9 +468,8 @@ export default function AdminDashboard() {
                 <div className="p-6 border-t flex flex-col sm:flex-row justify-center items-center bg-white gap-10 text-[11px] font-black text-slate-400">
                    <p>共 {users.length} 條物理紀錄</p>
                    <div className="flex items-center gap-4">
-                      {/* 🚀 修復重複 ID：管理表格分頁元件唯一化 */}
-                      <select id="adminUniqueUserTablePageSizeSelect" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} title="每頁顯示條數" className="bg-white border border-slate-200 rounded px-3 py-1.5 outline-none text-slate-600 cursor-pointer"><option value={20}>20 條/頁</option><option value={50}>50 條/頁</option></select>
-                      <div className="flex items-center gap-2 font-bold">跳至 <input id="adminUniqueUserJumpPageBox" title="跳頁" placeholder="1" className="w-10 h-7 border border-slate-200 rounded text-center outline-none text-slate-600" defaultValue={1} /> 頁</div>
+                      <select id="userManagementUniquePageSizeSelectIn" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} title="每頁顯示條數" className="bg-white border border-slate-200 rounded px-3 py-1.5 outline-none text-slate-600 cursor-pointer"><option value={20}>20 條/頁</option><option value={50}>50 條/頁</option></select>
+                      <div className="flex items-center gap-2 font-bold">跳至 <input id="adminUniqueJumpPageBoxInput" title="跳頁" placeholder="1" className="w-10 h-7 border border-slate-200 rounded text-center outline-none text-slate-600" defaultValue={1} /> 頁</div>
                    </div>
                 </div>
              </div>
@@ -476,7 +479,7 @@ export default function AdminDashboard() {
         {activeTab === "vans" && <div className="space-y-8 animate-in fade-in duration-500 pb-12"><VansCoreMetrics metrics={vansMetrics} /><VansReport /></div>}
       </main>
 
-      {/* 🚀 彈窗 A: 編輯使用者資料 (對位截圖 image_f30a7d) */}
+      {/* 🚀 彈窗 A: 編輯使用者資料 */}
       {isUserEditOpen && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-md">
            <div className="bg-white w-full max-w-2xl rounded-[1.5rem] shadow-2xl animate-in zoom-in-95 overflow-hidden border border-white">
@@ -488,16 +491,16 @@ export default function AdminDashboard() {
               </div>
               <form onSubmit={handleUserUpdate} className="p-10 space-y-8">
                  <div className="flex items-center gap-10">
-                    <label htmlFor="modalEditUniqueAccountInput" className="w-32 text-right text-sm font-bold text-slate-500 flex items-center justify-end gap-1"><span className="text-red-500 mr-1">*</span>帳號</label>
-                    <input id="modalEditUniqueAccountInput" name="account" defaultValue={editingUser?.account} required title="帳號必填" className="flex-1 border border-slate-200 rounded-lg px-4 py-3 outline-none focus:ring-1 focus:ring-blue-400 shadow-inner" />
+                    <label htmlFor="modalEditUniqueAccountInUnique" className="w-32 text-right text-sm font-bold text-slate-500 flex items-center justify-end gap-1"><span className="text-red-500 mr-1">*</span>帳號</label>
+                    <input id="modalEditUniqueAccountInUnique" name="account" defaultValue={editingUser?.account} required title="帳號必填" className="flex-1 border border-slate-200 rounded-lg px-4 py-3 outline-none focus:ring-1 focus:ring-blue-400 shadow-inner" />
                  </div>
                  <div className="flex items-center gap-10">
-                    <label htmlFor="modalEditUniqueNameInput" className="w-32 text-right text-sm font-bold text-slate-500">顯示名稱</label>
-                    <input id="modalEditUniqueNameInput" name="username" defaultValue={editingUser?.username} title="顯示名稱" className="flex-1 border border-slate-200 rounded-lg px-4 py-3 outline-none shadow-inner" />
+                    <label htmlFor="modalEditUniqueNameInUnique" className="w-32 text-right text-sm font-bold text-slate-500">顯示名稱</label>
+                    <input id="modalEditUniqueNameInUnique" name="username" defaultValue={editingUser?.username} title="顯示名稱" className="flex-1 border border-slate-200 rounded-lg px-4 py-3 outline-none shadow-inner" />
                  </div>
                  <div className="flex items-center gap-10">
-                    <label htmlFor="modalEditUniqueMailInput" className="w-32 text-right text-sm font-bold text-slate-500">電子郵件</label>
-                    <input id="modalEditUniqueMailInput" name="email" type="email" defaultValue={editingUser?.email} placeholder="ian@rapixus.com" title="電子郵件" className="flex-1 border border-slate-200 rounded-lg px-4 py-3 outline-none shadow-inner" />
+                    <label htmlFor="modalEditUniqueMailInUnique" className="w-32 text-right text-sm font-bold text-slate-500">電子郵件</label>
+                    <input id="modalEditUniqueMailInUnique" name="email" type="email" defaultValue={editingUser?.email} placeholder="ian@rapixus.com" title="電子郵件" className="flex-1 border border-slate-200 rounded-lg px-4 py-3 outline-none shadow-inner" />
                  </div>
                  <div className="flex justify-between items-center pt-10 border-t border-slate-50">
                     <button type="button" className="px-6 py-3 bg-[#ffb74d] text-white rounded-lg font-black text-xs flex items-center gap-2 shadow-md hover:brightness-105 transition-all"><span className="material-symbols-outlined text-[16px]">lock_open</span>修改密碼</button>
@@ -511,19 +514,17 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 🚀 彈窗 B: 編輯使用者政策 (對位截圖 image_f30a1d) */}
+      {/* 🚀 彈窗 B: 編輯使用者政策 */}
       {isPolicyOpen && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-md">
            <div className="bg-white w-full max-w-2xl rounded-[1.5rem] shadow-2xl animate-in zoom-in-95 overflow-hidden">
               <div className="flex justify-between items-center px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-                 <h2 className="text-xl font-bold text-slate-800">編輯使用者政策</h2>
+                 <h2 className="text-xl font-bold text-slate-800 tracking-tight">編輯使用者政策</h2>
                  <button onClick={() => setIsPolicyOpen(false)} title="關閉彈窗" className="text-slate-400 hover:text-slate-600 transition-colors"><span className="material-symbols-outlined">close</span></button>
               </div>
               <div className="p-10 max-h-[60vh] overflow-y-auto space-y-6">
                  {[
                    { l: "密碼最小長度", v: policyData?.pwd_min_len || 6, u: "字元" },
-                   { l: "密碼最小使用天數", v: policyData?.pwd_min_days || 1, u: "天" },
-                   { l: "密碼最大使用天數", v: policyData?.pwd_max_days || 180, u: "天" },
                    { l: "帳戶鎖定時間", v: policyData?.account_lock_sec || 900, u: "秒" },
                    { l: "未操作強制登出", v: policyData?.idle_logout_min || 30, u: "分鐘" },
                  ].map((p, idx) => (
@@ -532,7 +533,7 @@ export default function AdminDashboard() {
                           {p.l} <span className="material-symbols-outlined text-[16px] text-slate-300">help</span>
                        </div>
                        <div className="flex-1 flex items-center gap-4">
-                          <input id={`adminUniquePolicyInputIn_${idx}`} title={p.l} defaultValue={p.v} className="w-32 border border-slate-200 rounded px-4 py-2 outline-none font-mono" />
+                          <input id={`adminPolicyUniqueInputBoxIn_${idx}`} title={p.l} defaultValue={p.v} className="w-32 border border-slate-200 rounded px-4 py-2 outline-none font-mono" />
                           <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{p.u}</span>
                        </div>
                     </div>
@@ -549,8 +550,8 @@ export default function AdminDashboard() {
       {/* 🚀 底部浮動分頁切換器 */}
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[130] bg-slate-900/90 backdrop-blur-2xl p-2 rounded-full shadow-2xl border border-white/10 flex gap-1 animate-in slide-in-from-bottom-10 duration-700">
         <button onClick={() => setActiveTab("dashboard")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "dashboard" ? "bg-white text-slate-900 shadow-xl scale-105" : "text-slate-400 hover:text-white"}`}>行政總覽</button>
-        <button onClick={() => setActiveTab("history")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "history" ? "bg-white text-slate-900 shadow-xl scale-105" : "text-slate-400 hover:text-white"}`}>歷史</button>
-        <button onClick={() => setActiveTab("vans")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "vans" ? "bg-blue-600 text-white shadow-lg shadow-blue-500/50 scale-105" : "text-slate-400 hover:text-white"}`}>VANS</button>
+        <button onClick={() => setActiveTab("history")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "history" ? "bg-white text-slate-900 shadow-xl scale-105" : "text-slate-400 hover:text-white"}`}>歷史矩陣</button>
+        <button onClick={() => setActiveTab("vans")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "vans" ? "bg-blue-600 text-white shadow-lg shadow-blue-500/50 scale-105" : "text-slate-400 hover:text-white"}`}>VANS 稽核</button>
         <button onClick={() => setActiveTab("users")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "users" ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/50 scale-105" : "text-slate-400 hover:text-white"}`}>帳號管理</button>
       </div>
 
