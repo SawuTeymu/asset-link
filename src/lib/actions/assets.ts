@@ -1,289 +1,281 @@
-"use server";
+"use client";
 
-import { supabase } from "../supabase";
-import { logAction } from "./auth";
-import { unstable_noStore as noStore } from "next/cache";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { submitAssetBatch, getVendorProgress, vendorConfirmAsset } from "@/lib/actions/assets";
+import { formatFloor, formatMAC } from "@/lib/logic/formatters";
 
 /**
  * ==========================================
- * 檔案：src/lib/actions/assets.ts
- * 狀態：V6.7 旗艦完全體 (修復進度查詢全資料顯示)
+ * 檔案：src/app/keyin/page.tsx
+ * 狀態：V5.7 旗艦完全體 (修復 axe/forms 無障礙性錯誤)
  * 物理職責：
- * 1. 實作「退回修正」自管理端隱藏。
- * 2. 實作「已核定(待確認)」狀態，等候廠商確認才入歷史庫。
- * 3. 升級 IP 衝突引擎，涵蓋「待確認中」之暫存防護。
- * 4. 徹底落實「雙重轉型 (Double Casting)」，消滅編譯器紅字。
- * 5. [重磅升級] 進度查詢改為「跨表聯集 (Union)」，合併顯示進行中與歷史已結案全資料。
+ * 1. 廠商填報：支援新機配發與舊換新錄入。
+ * 2. 進度查詢：顯示進行中與已結案之全資料。
+ * 3. 無障礙優化：補齊 label htmlFor 與 id 綁定，增加 title 屬性。
  * ==========================================
  */
 
-export interface VendorSubmitPayload {
-  form_id: string;
-  install_date: string;
-  area: string;
-  floor: string;
-  unit: string;
-  applicant: string;
+interface AssetRow {
+  id: number;
   model: string;
   sn: string;
-  original_sn?: string; // 🚀 用於承接廠商重送的舊序號，物理覆蓋
+  originalSn?: string;
   mac1: string;
   mac2: string;
-  remark: string;
-  vendor: string;
+  ext: string;
+  oldInfo: string;
+  type: "NEW" | "REPLACE";
+}
+
+interface ProgressRecord {
+  formId: string;
   status: string;
+  date: string;
+  unit: string;
+  sn: string;
+  model: string;
+  assignedIp?: string;
+  assignedName?: string;
+  rejectReason?: string;
+  mac1?: string;
+  mac2?: string;
 }
 
-export async function submitAssetBatch(batchData: VendorSubmitPayload[]) {
-  // 🚀 物理防線：廠商「載入修正」重送時，物理刪除被退回的舊紀錄，確保單軌替換
-  for (const d of batchData) {
-    if (d.original_sn) {
-      await supabase.from("assets").delete().eq("產品序號", d.original_sn);
-    }
-  }
+function KeyinContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const insertData = batchData.map(d => ({
-    案件編號: d.form_id,
-    裝機日期: d.install_date,
-    院區: d.area,
-    樓層: d.floor,
-    使用單位: d.unit,
-    姓名分機: d.applicant,
-    品牌型號: d.model,
-    產品序號: d.sn || `SN-AUTO-${Math.floor(Math.random() * 100000)}`, 
-    主要mac: d.mac1,
-    無線mac: d.mac2,
-    備註: d.remark,
-    來源廠商: d.vendor,
-    狀態: d.status
-  }));
+  const [vendorName, setVendorName] = useState("");
+  const [area, setArea] = useState("本院");
+  const [floor, setFloor] = useState("");
+  const [unit, setUnit] = useState("");
+  const [applicant, setApplicant] = useState("");
+  const [installDate, setInstallDate] = useState(new Date().toISOString().split("T")[0]);
 
-  const { error } = await supabase.from("assets").insert(insertData);
-  if (error) throw new Error("預約資料寫入失敗: " + error.message);
+  const [rows, setRows] = useState<AssetRow[]>([
+    { id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }
+  ]);
 
-  await logAction("VENDOR_KEYIN", `廠商 [${batchData[0]?.vendor}] 提交預約單 (${batchData[0]?.form_id})`);
-  return { success: true };
-}
-
-/**
- * 🚀 管理端待辦獲取 (物理過濾退回案件)
- */
-export async function getAdminPendingData() {
-  noStore();
-  // 🚀 物理修復：只抓取「待核定」，退回案件物理隱藏，等待廠商重送
-  const { data, error } = await supabase
-    .from("assets")
-    .select("*")
-    .eq("狀態", "待核定")
-    .order("建立時間", { ascending: true });
-
-  if (error) throw new Error("讀取待核定失敗: " + error.message);
-
-  const typedData = data as unknown as Record<string, unknown>[];
-  return (typedData || []).map((r) => ({
-    formId: String(r.案件編號 || ""),
-    date: String(r.裝機日期 || ""),
-    area: String(r.院區 || ""),
-    floor: String(r.樓層 || ""),
-    unit: String(r.使用單位 || ""),
-    ext: String(r.姓名分機 || ""),
-    model: String(r.品牌型號 || ""),
-    sn: String(r.產品序號 || ""),
-    mac1: String(r.主要mac || ""),
-    mac2: String(r.無線mac || ""),
-    status: String(r.狀態 || ""),
-    vendor: String(r.來源廠商 || ""),
-    remark: String(r.備註 || "")
-  }));
-}
-
-/**
- * 🚀 廠商端進度獲取 (專屬通道：跨表聯集合併全資料)
- */
-export async function getVendorProgress(vendor: string) {
-  noStore();
-  
-  // 1. 從 assets 表抓取「進行中」的資料
-  const { data: activeData, error: activeErr } = await supabase
-    .from("assets")
-    .select("*")
-    .eq("來源廠商", vendor);
-
-  if (activeErr) throw new Error("讀取進行中進度失敗: " + activeErr.message);
-
-  // 2. 從 historical_assets 表抓取「已結案」的資料
-  // 結案庫中廠商名稱是存在「同步來源」欄位
-  const { data: histData, error: histErr } = await supabase
-    .from("historical_assets")
-    .select("*")
-    .eq("同步來源", vendor);
-
-  if (histErr) throw new Error("讀取已結案進度失敗: " + histErr.message);
-
-  const typedActive = (activeData || []) as unknown as Record<string, unknown>[];
-  const typedHist = (histData || []) as unknown as Record<string, unknown>[];
-
-  // 3. 轉換進行中資料格式
-  const activeRecords = typedActive.map((r) => ({
-    formId: String(r.案件編號 || ""),
-    date: String(r.裝機日期 || ""),
-    area: String(r.院區 || ""),
-    floor: String(r.樓層 || ""),
-    unit: String(r.使用單位 || ""),
-    applicantFull: String(r.姓名分機 || ""),
-    model: String(r.品牌型號 || ""),
-    sn: String(r.產品序號 || ""),
-    mac1: String(r.主要mac || ""),
-    mac2: String(r.無線mac || ""),
-    status: String(r.狀態 || ""),
-    remark: String(r.備註 || ""),
-    rejectReason: String(r.行政退回原因 || ""),
-    assignedIp: String(r.核定ip || ""),
-    assignedName: String(r.設備名稱標記 || ""),
-    _rawTime: String(r.建立時間 || r.裝機日期 || "") // 用於排序
-  }));
-
-  // 4. 轉換已結案資料格式
-  const histRecords = typedHist.map((r) => ({
-    formId: String(r.結案單號 || ""),
-    date: String(r.裝機日期 || ""),
-    area: String(r.院區 || ""),
-    floor: String(r.樓層 || ""),
-    unit: String(r.使用單位 || ""),
-    applicantFull: String(r.姓名分機 || ""),
-    model: String(r.品牌型號 || ""),
-    sn: String(r.產品序號 || ""),
-    mac1: String(r.主要mac || ""),
-    mac2: String(r.無線mac || ""),
-    status: String(r.狀態 || "已結案"),
-    remark: String(r.行政備註 || ""), 
-    rejectReason: "", // 已結案不會有退回原因
-    assignedIp: String(r.核定ip || ""),
-    assignedName: String(r.設備名稱標記 || ""),
-    _rawTime: String(r.建立時間 || r.裝機日期 || "") // 用於排序
-  }));
-
-  // 5. 將兩包資料合併，並依照建立時間(或裝機日期)遞減排序 (新的在上面)
-  const combinedRecords = [...activeRecords, ...histRecords].sort((a, b) => {
-    return b._rawTime.localeCompare(a._rawTime);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loaderText, setLoaderText] = useState("處理中...");
+  const [isProgressOpen, setIsProgressOpen] = useState(false);
+  const [progressData, setProgressData] = useState<ProgressRecord[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" }[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; content: string; onConfirm: () => void; type: 'info' | 'danger' }>({
+    isOpen: false, title: "", content: "", onConfirm: () => {}, type: 'info'
   });
 
-  return combinedRecords;
+  useEffect(() => {
+    if (!searchParams) return; 
+    const v = searchParams.get("v");
+    const u = searchParams.get("u");
+    if (v) setVendorName(v);
+    if (u) setUnit(u);
+  }, [searchParams]);
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  };
+
+  const fetchProgress = async () => {
+    if (!vendorName) { showToast("請先輸入廠商名稱", "error"); return; }
+    setIsLoading(true); setLoaderText("讀取全資料進度中...");
+    try {
+      const data = await getVendorProgress(vendorName);
+      setProgressData(data as ProgressRecord[]);
+      setIsProgressOpen(true);
+    } catch (error) { showToast("無法讀取進度", "error"); } finally { setIsLoading(false); }
+  };
+
+  const loadForFix = (record: ProgressRecord) => {
+    setConfirmDialog({
+      isOpen: true, title: "載入修正", content: `確認將案件 [${record.sn}] 載入進行修正？`, type: 'info',
+      onConfirm: () => {
+        setUnit(record.unit);
+        setRows([{ id: Date.now(), model: record.model, sn: record.sn, originalSn: record.sn, mac1: record.mac1 || "", mac2: record.mac2 || "", ext: "", oldInfo: "", type: "NEW" }]);
+        setIsProgressOpen(false); showToast("已載入修正資料");
+      }
+    });
+  };
+
+  const handleConfirmClose = (record: ProgressRecord) => {
+    setConfirmDialog({
+      isOpen: true, title: "確認結案", content: `確認核定 IP [${record.assignedIp}] 正確無誤？`, type: 'info',
+      onConfirm: async () => {
+        setIsLoading(true); setLoaderText("執行結案遷移...");
+        try {
+          await vendorConfirmAsset(record.sn);
+          showToast("結案成功"); await fetchProgress();
+        } catch (e) { showToast("結案失敗", "error"); } finally { setIsLoading(false); }
+      }
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!vendorName || !unit || !applicant) { showToast("基本資訊未填寫", "error"); return; }
+    if (rows.some(r => !r.model || !r.sn || !r.mac1)) { showToast("設備明細不完整", "error"); return; }
+    setIsLoading(true); setLoaderText("提交申請中...");
+    try {
+      const payload = rows.map(r => ({ form_id: `REQ-${Date.now().toString().slice(-6)}`, install_date: installDate, area, floor, unit, applicant, model: r.model, sn: r.sn, original_sn: r.originalSn, mac1: r.mac1, mac2: r.mac2, remark: r.oldInfo || "", vendor: vendorName, status: "待核定" }));
+      await submitAssetBatch(payload);
+      showToast("提交成功");
+      setRows([{ id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }]);
+    } catch (e) { showToast("提交失敗", "error"); } finally { setIsLoading(false); }
+  };
+
+  const addRow = () => setRows([...rows, { id: Date.now(), model: "", sn: "", mac1: "", mac2: "", ext: "", oldInfo: "", type: "NEW" }]);
+  const removeRow = (id: number) => rows.length > 1 && setRows(rows.filter(r => r.id !== id));
+  const updateRow = (id: number, field: keyof AssetRow, value: any) => setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
+
+  return (
+    <div className="min-h-screen bg-slate-50 pb-24 text-slate-900 font-sans">
+      <nav className="bg-white border-b sticky top-0 z-50 px-4 py-4 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><span className="material-symbols-outlined text-white text-xl">account_balance_wallet</span></div>
+            <h1 className="font-black tracking-tighter text-lg text-slate-800">ASSET-LINK <span className="text-blue-600">V5.7</span></h1>
+        </div>
+        <button onClick={fetchProgress} aria-label="查看進度" className="bg-slate-100 p-2 rounded-full hover:bg-slate-200 transition-colors"><span className="material-symbols-outlined text-slate-600 block">history</span></button>
+      </nav>
+
+      <main className="max-w-[500px] mx-auto p-4 space-y-6">
+        <section className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 space-y-4">
+            <div className="flex items-center gap-2 mb-2"><span className="w-1.5 h-6 bg-blue-600 rounded-full"></span><h2 className="font-black text-slate-800 uppercase tracking-widest text-sm">基本安裝資訊</h2></div>
+            <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1">
+                    <label htmlFor="vendor-input" className="text-[10px] font-black text-slate-400 uppercase ml-1">維護廠商名稱</label>
+                    <input id="vendor-input" value={vendorName} onChange={e => setVendorName(e.target.value)} placeholder="維護廠商名稱" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <label htmlFor="area-select" className="text-[10px] font-black text-slate-400 uppercase ml-1">裝機院區</label>
+                        <select id="area-select" title="選擇裝機院區" value={area} onChange={e => setArea(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold"><option>本院</option><option>兒醫</option></select>
+                    </div>
+                    <div className="space-y-1">
+                        <label htmlFor="floor-input" className="text-[10px] font-black text-slate-400 uppercase ml-1">樓層</label>
+                        <input id="floor-input" value={floor} onChange={e => setFloor(formatFloor(e.target.value))} placeholder="例如: 5F" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                    </div>
+                </div>
+                <div className="space-y-1">
+                    <label htmlFor="unit-input" className="text-[10px] font-black text-slate-400 uppercase ml-1">使用單位全銜</label>
+                    <input id="unit-input" value={unit} onChange={e => setUnit(e.target.value)} placeholder="例如: 資訊組" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <label htmlFor="applicant-input" className="text-[10px] font-black text-slate-400 uppercase ml-1">申請人/分機</label>
+                        <input id="applicant-input" value={applicant} onChange={e => setApplicant(e.target.value)} placeholder="王大明/1234" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                        <label htmlFor="date-input" className="text-[10px] font-black text-slate-400 uppercase ml-1">裝機日期</label>
+                        <input id="date-input" type="date" title="選擇裝機日期" value={installDate} onChange={e => setInstallDate(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold text-slate-600" />
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {rows.map((row, index) => (
+            <section key={row.id} className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 space-y-5 relative">
+                <div className="flex justify-between items-center"><h2 className="font-black text-slate-800 text-sm">資產設備 #{index + 1}</h2>{rows.length > 1 && <button onClick={() => removeRow(row.id)} aria-label="刪除此列" className="text-red-500 material-symbols-outlined text-lg">delete</button>}</div>
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                    <button onClick={() => updateRow(row.id, 'type', 'NEW')} className={`flex-1 py-2 rounded-xl text-xs font-black ${row.type === 'NEW' ? 'bg-white shadow-md text-blue-600' : 'text-slate-400'}`}>新機配發</button>
+                    <button onClick={() => updateRow(row.id, 'type', 'REPLACE')} className={`flex-1 py-2 rounded-xl text-xs font-black ${row.type === 'REPLACE' ? 'bg-white shadow-md text-orange-600' : 'text-slate-400'}`}>舊換新(汰換)</button>
+                </div>
+                <div className="space-y-4">
+                    <div className="space-y-1">
+                        <label htmlFor={`model-${row.id}`} className="text-[10px] font-black text-slate-400 uppercase ml-1">品牌型號</label>
+                        <input id={`model-${row.id}`} value={row.model} onChange={e => updateRow(row.id, 'model', e.target.value)} placeholder="例如: ASUS D700" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                        <label htmlFor={`sn-${row.id}`} className="text-[10px] font-black text-slate-400 uppercase ml-1">產品序號 (SN)</label>
+                        <input id={`sn-${row.id}`} value={row.sn} onChange={e => updateRow(row.id, 'sn', e.target.value.toUpperCase())} placeholder="掃描或輸入序號" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label htmlFor={`mac1-${row.id}`} className="text-[10px] font-black text-slate-400 uppercase ml-1">主要網卡 MAC</label>
+                            <input id={`mac1-${row.id}`} value={row.mac1} onChange={e => updateRow(row.id, 'mac1', formatMAC(e.target.value))} placeholder="有線網路" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                        </div>
+                        <div className="space-y-1">
+                            <label htmlFor={`mac2-${row.id}`} className="text-[10px] font-black text-slate-400 uppercase ml-1">無線網卡 MAC</label>
+                            <input id={`mac2-${row.id}`} value={row.mac2} onChange={e => updateRow(row.id, 'mac2', formatMAC(e.target.value))} placeholder="無線/選填" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-bold" />
+                        </div>
+                    </div>
+                </div>
+            </section>
+        ))}
+        <button onClick={addRow} className="w-full border-2 border-dashed border-slate-200 rounded-3xl py-6 text-xs font-black text-slate-400 uppercase tracking-tighter hover:bg-blue-50">新增一筆資產明細</button>
+      </main>
+
+      <footer className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t z-40 shadow-2xl flex gap-3">
+          <button onClick={handleSubmit} className="flex-1 bg-blue-600 text-white rounded-2xl font-black py-4 shadow-lg active:scale-95 transition-transform">提交預約申請</button>
+      </footer>
+
+      {isProgressOpen && (
+          <div className="fixed inset-0 z-[1000] flex justify-end">
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsProgressOpen(false)} />
+              <div className="w-full max-w-[420px] bg-white shadow-2xl flex flex-col relative animate-in slide-in-from-right">
+                  <div className="p-6 border-b flex justify-between items-center"><h3 className="font-black text-lg flex items-center gap-2"><span className="material-symbols-outlined text-blue-600">manage_search</span> 申請進度與全紀錄</h3><button onClick={() => setIsProgressOpen(false)} className="material-symbols-outlined text-slate-400">close</button></div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+                      {progressData.map((record, i) => (
+                          <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
+                              <div className="flex justify-between items-start">
+                                  <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${record.status === '已結案' ? 'bg-emerald-500 text-white' : record.status === '退回修正' ? 'bg-red-500 text-white' : 'bg-orange-500 text-white'}`}>{record.status}</div>
+                                  <span className="text-[10px] font-bold text-slate-300">{record.date}</span>
+                              </div>
+                              <h4 className="font-black text-slate-800 text-sm">{record.unit} / {record.model}</h4>
+                              <p className="text-[10px] font-bold text-slate-500">SN: {record.sn}</p>
+                              {record.status === '已核定(待確認)' && (
+                                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-100 space-y-2">
+                                      <p className="text-[10px] font-bold">核定 IP: {record.assignedIp}</p>
+                                      <button onClick={() => handleConfirmClose(record)} className="w-full bg-blue-600 text-white py-2 rounded-lg font-black text-[10px]">確認並結案</button>
+                                  </div>
+                              )}
+                              {record.status === '退回修正' && (
+                                  <div className="bg-red-50 rounded-xl p-3 border border-red-100">
+                                      <p className="text-[10px] text-red-600 font-black mb-2">原因: {record.rejectReason}</p>
+                                      <button onClick={() => loadForFix(record)} className="w-full bg-red-600 text-white py-2 rounded-lg font-black text-[10px]">載入修正</button>
+                                  </div>
+                              )}
+                              {record.status === '已結案' && <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100"><p className="text-[10px] font-bold text-emerald-800">固定 IP: {record.assignedIp}</p></div>}
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {isLoading && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[2000] flex flex-col items-center justify-center"><div className="w-12 h-12 border-4 border-t-blue-600 border-slate-200 rounded-full animate-spin mb-4"></div><p className="text-white font-black text-sm uppercase">{loaderText}</p></div>}
+
+      {confirmDialog.isOpen && (
+          <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6">
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setConfirmDialog(prev => ({...prev, isOpen: false}))} />
+              <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl relative animate-in zoom-in-95">
+                  <h4 className="text-xl font-black text-slate-800 mb-2">{confirmDialog.title}</h4>
+                  <p className="text-slate-500 font-bold text-sm mb-8 leading-relaxed">{confirmDialog.content}</p>
+                  <div className="flex gap-3">
+                      <button onClick={() => setConfirmDialog(prev => ({...prev, isOpen: false}))} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black">取消</button>
+                      <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(prev => ({...prev, isOpen: false})); }} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg">確認執行</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[4000] flex flex-col gap-3 pointer-events-none w-full max-w-[340px] px-4">
+          {toasts.map(t => (
+              <div key={t.id} className={`px-6 py-4 rounded-2xl text-xs font-black text-white shadow-2xl animate-in slide-in-from-bottom flex items-center gap-3 ${t.type === 'error' ? 'bg-red-600' : 'bg-slate-900/90'}`}>
+                  <span className="material-symbols-outlined text-base">info</span><span>{t.msg}</span>
+              </div>
+          ))}
+      </div>
+    </div>
+  );
 }
 
-/**
- * 🚀 IP 衝突深度掃描 (涵蓋待確認區)
- */
-export async function checkIpConflict(ip: string, isReplace: boolean) {
-  noStore();
-  if (isReplace) return { conflict: false, source: "" };
-
-  // 1. 檢查歷史庫
-  const { data: histData } = await supabase.from("historical_assets").select("使用單位").eq("核定ip", ip.trim()).not("狀態", "ilike", "%已報廢%");
-  // 🚀 物理修復：加入 unknown 雙重轉型，消滅 ParserError 轉換衝突 (TS2352)
-  if (histData && histData.length > 0) return { conflict: true, source: String((histData[0] as unknown as Record<string, unknown>).使用單位) };
-
-  // 2. 🚀 檢查待確認區 (防禦管理員連續核發相同 IP)
-  const { data: pendData } = await supabase.from("assets").select("使用單位").eq("核定ip", ip.trim()).eq("狀態", "已核定(待確認)");
-  // 🚀 物理修復：同步加入 unknown 雙重轉型
-  if (pendData && pendData.length > 0) return { conflict: true, source: `[待確認中] ${String((pendData[0] as unknown as Record<string, unknown>).使用單位)}` };
-
-  return { conflict: false, source: "" };
-}
-
-/**
- * 🚀 管理端執行核發 (變更狀態為待確認)
- */
-export async function approveAsset(sn: string, ip: string, deviceName: string, type: string, mac1: string = "", mac2: string = "") {
-  // 🚀 物理規則：不搬移資料，僅在原表打上 IP 並變更狀態讓廠商檢視
-  const { error } = await supabase.from("assets").update({
-    核定ip: ip,
-    設備名稱標記: deviceName,
-    設備類型: type,
-    主要mac: mac1 || undefined, 
-    無線mac: mac2 || undefined,
-    狀態: "已核定(待確認)"
-  }).eq("產品序號", sn);
-
-  if (error) throw new Error("核發狀態更新失敗");
-  await logAction("SYSTEM_ADMIN", `核定配發 IP 等待廠商確認 (SN: ${sn})`);
-  return { success: true };
-}
-
-/**
- * 🚀 廠商端執行確認結案 (物理遷移至歷史庫)
- */
-export async function vendorConfirmAsset(sn: string) {
-  const { data: assetData, error: fetchErr } = await supabase.from("assets").select("*").eq("產品序號", sn).single();
-  if (fetchErr || !assetData) throw new Error("找不到該核定案件");
-  
-  const asset = assetData as unknown as Record<string, unknown>;
-  const isReplace = String(asset.備註 || "").includes("[REPLACE]");
-  const ip = String(asset.核定ip || "");
-  const type = String(asset.設備類型 || "桌上型電腦");
-
-  // 舊換新封存舊機
-  if (isReplace && ip) {
-    await supabase.from("historical_assets").update({
-      狀態: "已封存(汰換)",
-      行政備註: "汰換日期：" + new Date().toISOString().split('T')[0]
-    }).eq("核定ip", ip.trim());
-  }
-
-  // 寫入歷史結案庫
-  const { error: insertErr } = await supabase.from("historical_assets").insert([{
-    結案單號: String(asset.案件編號 || ""),
-    裝機日期: String(asset.裝機日期 || ""),
-    院區: String(asset.院區 || ""),
-    樓層: String(asset.樓層 || ""),
-    使用單位: String(asset.使用單位 || ""),
-    姓名分機: String(asset.姓名分機 || ""),
-    設備類型: type,
-    品牌型號: String(asset.品牌型號 || ""),
-    產品序號: sn,
-    主要mac: String(asset.主要mac || ""), 
-    無線mac: String(asset.無線mac || ""),
-    設備名稱標記: String(asset.設備名稱標記 || ""),
-    核定ip: ip,
-    狀態: "已結案",
-    行政備註: isReplace ? "舊換新結案" : "新機配發結案",
-    同步來源: String(asset.來源廠商 || "")
-  }]);
-
-  if (insertErr) throw new Error("物理遷移至歷史庫失敗：" + insertErr.message);
-
-  // 物理刪除待辦
-  await supabase.from("assets").delete().eq("產品序號", sn);
-  await logAction("VENDOR_KEYIN", `廠商確認核發結果並結案 (SN: ${sn})`);
-  return { success: true };
-}
-
-export async function rejectAsset(sn: string, reason: string) {
-  const { error } = await supabase.from("assets").update({
-    狀態: "退回修正",
-    行政退回原因: reason
-  }).eq("產品序號", sn);
-
-  if (error) throw new Error("退回更新失敗");
-  await logAction("SYSTEM_ADMIN", `退回案件修正 (SN: ${sn})`);
-  return { success: true };
-}
-
-export async function getNextSequence(prefix: string) {
-  noStore();
-  const { count, error } = await supabase.from("historical_assets").select("*", { count: 'exact', head: true }).like("設備名稱標記", `${prefix}%`);
-  if (error) throw new Error("流水號抓取失敗");
-  return String((count || 0) + 1).padStart(3, '0');
-}
-
-export interface InternalIssuePayload {
-  installDate: string; area: string; floor: string; unit: string; ext: string; type: string; model: string; sn: string; mac1: string; mac2: string; ip: string; name: string; remark: string;
-}
-
-export async function submitInternalIssue(pkg: InternalIssuePayload) {
-  const { error } = await supabase.from("assets").insert([{
-    案件編號: `INT-${Date.now().toString().slice(-6)}`, 裝機日期: pkg.installDate, 院區: pkg.area, 樓層: pkg.floor, 使用單位: pkg.unit, 姓名分機: pkg.ext, 設備類型: pkg.type, 品牌型號: pkg.model, 產品序號: pkg.sn, 主要mac: pkg.mac1, 無線mac: pkg.mac2, 設備名稱標記: pkg.name, 核定ip: pkg.ip, 狀態: "已結案", 備註: pkg.remark || "系統管理端錄入", 來源廠商: "內部快速配發"
-  }]);
-  if (error) throw new Error("內部配發失敗: " + error.message);
-  return { success: true };
+export default function KeyinPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-10 h-10 border-4 border-t-blue-600 rounded-full animate-spin"></div></div>}>
+      <KeyinContent />
+    </Suspense>
+  );
 }
