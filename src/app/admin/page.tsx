@@ -41,8 +41,11 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 /**
  * ==========================================
  * 檔案：src/app/admin/page.tsx
- * 狀態：V32.0 終極修復完全體 (解決 TS Name/Any 報錯 & ESLint Unused)
- * 物理職責：管理端最高行政、資安、大數據與核銷中樞
+ * 狀態：V32.0 終極修復完全體 (0簡化、0刪除、ESLint & Axe 全綠燈)
+ * 物理修正摘要：
+ * 1. 修正 filteredCloud 變數命名為 filteredCloudHistory (解決 TS 2304)
+ * 2. 實裝強型別 (r: Record<string, unknown>, i: number) 解決隱含 any (解決 TS 7006)
+ * 3. 物理引用 filteredCloudHistory 解決 ESLint 未使用變數報警。
  * ==========================================
  */
 
@@ -111,7 +114,7 @@ export default function AdminDashboard() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 4. 數據同步核心 (物理全量對沖) ---
+  // --- 4. 數據同步核心 (物理對沖 + 解決渲染效能報警) ---
   const syncCoreData = useCallback(async () => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
     if (!isAuth) {
@@ -135,26 +138,26 @@ export default function AdminDashboard() {
       const nsrPendingCount = nsrTyped.filter(r => ["未處理", "待處理", ""].includes(String(r.處理狀態 || "").trim())).length;
       const nsrSettleCount = nsrTyped.filter(r => String(r.處理狀態 || "").trim() === "待請款").length;
 
-      // 批量更新狀態以優化效能，防止 React 渲染警告
+      // 批量更新狀態以優化效能，防止同步 SetState 引發 Cascading Render
       setStats({ ...eriStats, nsrPending: nsrPendingCount, nsrSettle: nsrSettleCount });
       setVansMetrics(vans as VansMetrics);
       setIpData(ips);
       setUsers(dbUsers as UserRecord[]);
       setPolicyData(policy as PolicyData);
-      setHistoryRecords(cloudHistory as Record<string, unknown>[]); // 🚀 物理落地：確保雲端歷史數據被設值
+      setHistoryRecords(cloudHistory as Record<string, unknown>[]); // 🚀 物理落地：解決 unused-vars
       
       if (vans.ipConflictCount > 0) {
         showToast(`⚠️ 偵測到 ${vans.ipConflictCount} 筆 IP 衝突！`, "error");
       }
     } catch {
-      showToast("雲端對沖連鎖異常，請檢查資料庫連線", "error");
+      showToast("雲端對沖異常，請檢查資料庫連線", "error");
     } finally {
       setIsLoading(false);
     }
   }, [router, showToast]);
 
   useEffect(() => {
-    // 透過非同步啟動，防止同步 SetState 引發級聯渲染報警
+    // 透過非同步微任務啟動，防止級聯渲染報警
     const launchDataPolice = async () => {
       await syncCoreData();
     };
@@ -171,7 +174,7 @@ export default function AdminDashboard() {
     link.href = URL.createObjectURL(blob);
     link.download = "AssetLink_History_Template.csv";
     link.click();
-    showToast("大數據範本檔已安全下載", "info");
+    showToast("範本檔已安全下載", "info");
   };
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,7 +216,7 @@ export default function AdminDashboard() {
       setIsUserEditOpen(false);
       await syncCoreData();
     } catch { 
-      showToast("抹除失敗", "error"); 
+      showToast("資料入庫失敗", "error"); 
     } finally { 
       setIsLoading(false); 
     }
@@ -225,7 +228,7 @@ export default function AdminDashboard() {
     try {
       await upsertUser({ ...target, status: !target.status });
       setUsers(prev => prev.map(u => u.id === id ? { ...u, status: !u.status } : u));
-      showToast("狀態同步成功", "success");
+      showToast("啟用狀態同步成功", "success");
     } catch { 
       showToast("狀態更新異常", "error"); 
     }
@@ -239,13 +242,13 @@ export default function AdminDashboard() {
       showToast("帳號已從資料庫物理抹除", "success");
       await syncCoreData();
     } catch { 
-      showToast("刪除失敗", "error"); 
+      showToast("抹除動作中斷", "error"); 
     } finally { 
       setIsLoading(false); 
     }
   };
 
-  // --- 7. 數據矩陣運算 (物理整合：解決 historyRecords 警告) ---
+  // --- 7. 數據矩陣運算 (物理整合：解決 TS/ESLint 報警) ---
   const filteredUsers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return users.filter(u => u.username?.toLowerCase().includes(q) || u.account?.toLowerCase().includes(q));
@@ -335,7 +338,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* --- 視圖 B: 歷史大數據 --- */}
+        {/* --- 視圖 B: 歷史大數據 (物理對稱：整合 CSV 與 雲端 historyRecords) --- */}
         {activeTab === "history" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex flex-wrap items-center justify-between gap-4 glass-panel p-8 rounded-[2rem] bg-white/90 border-none shadow-sm">
@@ -356,12 +359,11 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="glass-panel overflow-hidden rounded-[2.5rem] bg-white border-none shadow-2xl">
-                    {/* 🚀 物理修復：整合雲端與本地數據，解決 unused-vars 警告 */}
                     {csvHistory.length === 0 && historyRecords.length === 0 ? (
                         <div className="p-32 text-center opacity-30 font-black italic tracking-widest uppercase text-slate-400">歷史大數據矩陣尚未對沖...</div>
                     ) : (
                         <div className="overflow-x-auto max-h-[60vh]">
-                            <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-100">
+                            <div className="bg-slate-50/50 px-8 py-4 border-b border-slate-100 flex justify-between items-center">
                                 <span className="text-[11px] font-black text-blue-600 uppercase tracking-widest">
                                     {csvHistory.length > 0 ? `目前模式：CSV 物理對沖數據 (${csvHistory.length} 筆)` : `目前模式：雲端大數據歸檔預覽 (${historyRecords.length} 筆)`}
                                 </span>
@@ -371,7 +373,7 @@ export default function AdminDashboard() {
                                     <tr>
                                         {csvHistory.length > 0 
                                             ? Object.keys(csvHistory[0]).map(h => <th key={h} className="px-6 py-5 whitespace-nowrap">{h}</th>)
-                                            : ["項次", "單號", "單位", "主要MAC", "核定IP", "型號"].map(h => <th key={h} className="px-6 py-5 whitespace-nowrap">{h}</th>)
+                                            : ["項次", "結案單號", "使用單位", "主要MAC", "核定IP", "品牌型號"].map(h => <th key={h} className="px-6 py-5 whitespace-nowrap">{h}</th>)
                                         }
                                     </tr>
                                 </thead>
@@ -383,7 +385,7 @@ export default function AdminDashboard() {
                                             </tr>
                                         ))
                                     ) : (
-                                        /* 🚀 物理修正：將 filteredCloud 更名為 filteredCloudHistory 並加入強型別參數 */
+                                        /* 🚀 物理修復：變數命名更正為 filteredCloudHistory 並加入強型別 (r: Record<string, unknown>, i: number) */
                                         filteredCloudHistory.slice(0, 50).map((r: Record<string, unknown>, i: number) => (
                                             <tr key={i} className="user-row text-[12px] font-bold text-slate-600">
                                                 <td className="px-6 py-4 border-b border-slate-50">{i + 1}</td>
@@ -414,7 +416,6 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex items-center gap-3">
                    <div className="relative">
-                      {/* 🚀 修復 Axe Duplicate ID：管理端搜尋唯一化 */}
                       <input id="adminUniqueGlobalUserSearchInput" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="名稱、帳號搜尋..." title="搜尋帳號資訊" className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold w-64 focus:ring-1 focus:ring-blue-500 outline-none shadow-inner" />
                       <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
                    </div>
@@ -468,7 +469,6 @@ export default function AdminDashboard() {
                 <div className="p-6 border-t flex flex-col sm:flex-row justify-center items-center bg-white gap-10 text-[11px] font-black text-slate-400">
                    <p>共 {users.length} 條物理紀錄</p>
                    <div className="flex items-center gap-4">
-                      {/* 🚀 修復重複 ID：管理表格分頁元件唯一化 */}
                       <select id="userManagementTableUniquePageSizeSelect" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} title="每頁顯示條數" className="bg-white border border-slate-200 rounded px-3 py-1.5 outline-none text-slate-600 cursor-pointer"><option value={20}>20 條/頁</option><option value={50}>50 條/頁</option></select>
                       <div className="flex items-center gap-2 font-bold text-slate-500">跳至 <input id="adminUniqueUserTableJumpPageInput" title="跳頁" placeholder="1" className="w-10 h-7 border border-slate-200 rounded text-center outline-none text-slate-600" defaultValue={1} /> 頁</div>
                    </div>
@@ -515,7 +515,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 🚀 彈窗 B: 使用者政策 (對位截圖 image_f30a1d) */}
+      {/* 🚀 彈窗 B: 編輯使用者政策 (對位截圖 image_f30a1d) */}
       {isPolicyOpen && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-md">
            <div className="bg-white w-full max-w-2xl rounded-[1.5rem] shadow-2xl animate-in zoom-in-95 overflow-hidden">
@@ -550,7 +550,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 🚀 底部分頁切換 */}
+      {/* 🚀 底部浮動分頁切換器 */}
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[130] bg-slate-900/90 backdrop-blur-2xl p-2 rounded-full shadow-2xl border border-white/10 flex gap-1 animate-in slide-in-from-bottom-10 duration-700">
         <button onClick={() => setActiveTab("dashboard")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "dashboard" ? "bg-white text-slate-900 shadow-xl scale-105" : "text-slate-400 hover:text-white"}`}>總覽</button>
         <button onClick={() => setActiveTab("history")} className={`px-6 py-2.5 rounded-full font-black text-[10px] uppercase transition-all duration-300 ${activeTab === "history" ? "bg-white text-slate-900 shadow-xl scale-105" : "text-slate-400 hover:text-white"}`}>歷史</button>
@@ -561,8 +561,8 @@ export default function AdminDashboard() {
       {/* 全域物理遮罩 */}
       {(isLoading || isCsvParsing) && (
         <div className="fixed inset-0 z-[2000] flex flex-col items-center justify-center bg-white/90 backdrop-blur-2xl">
-          <div className="w-16 h-16 border-[6px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-8 shadow-2xl"></div>
-          <p className="text-blue-600 font-black tracking-[0.5em] uppercase text-xs animate-pulse">
+          <div className="w-16 h-16 border-[6px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-8 shadow-2xl shadow-blue-500/10"></div>
+          <p className="text-blue-600 font-black tracking-[0.6em] uppercase text-xs animate-pulse">
             {isCsvParsing ? "正在物理對沖大數據 CSV..." : "全院數據物理對沖同步中..."}
           </p>
         </div>
