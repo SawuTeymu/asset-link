@@ -138,7 +138,7 @@ export default function LoginPage() {
                   <span className="material-symbols-outlined text-slate-500 group-hover:text-primary">storefront</span>
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-800 text-lg">廠商預約申請入口</h3>
+                  <h3 className="font-black text-slate-800 text-lg">廠商預約申請</h3>
                   <p className="text-[10px] font-bold text-slate-400">Vendor Application Portal</p>
                 </div>
               </button>
