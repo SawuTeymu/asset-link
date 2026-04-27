@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-// 🚀 引入共用佈局組件
+// 🚀 引入佈局與 UI 組件
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import TopNavbar from "@/components/layout/TopNavbar";
 
@@ -18,6 +18,18 @@ import {
 import { formatFloor } from "@/lib/logic/formatters";
 import { calculateNsrPrice } from "@/lib/logic/pricing";
 
+/**
+ * ==========================================
+ * 檔案：src/app/nsr/page.tsx
+ * 狀態：V7.1 型別對沖修正版 (修復 setUnit 報錯)
+ * 物理職責：
+ * 1. 視覺中樞：還原呼吸背景、毛玻璃、超大圓角設計。
+ * 2. 計價引擎：實作 115 年度階梯式合約計價。
+ * 3. 數據管理：15 位單號自動對沖、姓名#分機自動化、物理刪除。
+ * 4. 🚨 Bug 修復：修正申請單位欄位 onChange 導致的 setUnit 未定義錯誤。
+ * ==========================================
+ */
+
 interface NsrRecord {
   id: string; 
   date: string; 
@@ -29,72 +41,53 @@ interface NsrRecord {
   ext: string; 
   points: number; 
   type: string;
-  reason: string; // 施工事由
+  reason: string;
   total: number; 
   status: string;
 }
 
-/**
- * ==========================================
- * 檔案：src/app/nsr/page.tsx
- * 狀態：V6.6 旗艦終極版 (姓名#分機自動化 + 物理刪除 + 全資料輸出)
- * 物理職責：
- * 1. 行政自動化：15位單號解碼，且姓名欄位空格自動轉 #。
- * 2. 派工輸出：純淨全資料輸出，移除冗餘符號。
- * 3. 權限管控：管理者專屬物理刪除與結算。
- * ==========================================
- */
-
 export default function NsrAdminPage() {
   const router = useRouter();
-
-  // --- 1. 核心數據狀態 ---
+  
+  // --- 1. 數據矩陣狀態 ---
   const [globalNsrData, setGlobalNsrData] = useState<NsrRecord[]>([]);
-  const [formData, setFormData] = useState<Partial<NsrRecord>>({
-    id: "", date: "", area: "A", floor: "", deptCode: "", unit: "", user: "", ext: "", points: 1, type: "CAT 6", reason: ""
+  const [isLoading, setIsLoading] = useState(true);
+  const [loaderText, setLoaderText] = useState("對沖中...");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // --- 2. 錄入表單狀態 ---
+  const [formData, setFormData] = useState({
+    id: "", date: "", area: "A", floor: "", unit: "", 
+    userWithExt: "", points: 1, type: "CAT 6", reason: ""
   });
 
-  // --- 2. UI 交互狀態 ---
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loaderText, setLoaderText] = useState("");
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
-
-  // 彈窗控制
-  const [isSettleOpen, setIsSettleOpen] = useState(false);
+  // --- 3. 業務操作狀態 ---
   const [settleItem, setSettleItem] = useState<NsrRecord | null>(null);
-  const [settleConfig, setSettleConfig] = useState({ isAddon: false, usePanel: false, remark: "" });
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isAddonWork, setIsAddonWork] = useState(false); // 加成施工
+  const [usePanel, setUsePanel] = useState(false);      // 使用面板
+  const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" | "info" }[]>([]);
 
   const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 3. 數據同步動作 ---
+  // --- 4. 數據同步核心 ---
   const refreshData = useCallback(async () => {
     setIsLoading(true);
-    setLoaderText("對接 115 年度合約雲端資料庫...");
+    setLoaderText("調研 115 數據矩陣...");
     try {
       const data = await getNsrList();
       const mapped = (data || []).map((r: any) => ({
-        id: r.申請單號,
-        date: r.申請日期,
-        area: r.棟別,
-        floor: r.樓層,
-        deptCode: r.部門代號,
-        unit: r.申請單位,
-        user: r.申請人,
-        ext: r.連絡電話,
-        points: r.需求數量,
-        type: r.線材規格,
-        reason: r.施工事由 || "",
-        total: r.行政核銷總額,
-        status: r.處理狀態
+        id: r.申請單號, date: r.申請日期, area: r.棟別, floor: r.樓層,
+        deptCode: r.部門代號, unit: r.申請單位, user: r.申請人,
+        ext: r.連絡電話, points: r.需求數量, type: r.線材規格,
+        reason: r.施工事由, total: r.行政核銷總額, status: r.處理狀態
       }));
       setGlobalNsrData(mapped);
-    } catch (err: unknown) {
-      showToast("雲端連線失敗", "error");
+    } catch {
+      showToast("雲端連線對沖失敗", "error");
     } finally {
       setIsLoading(false);
     }
@@ -102,368 +95,303 @@ export default function NsrAdminPage() {
 
   useEffect(() => {
     const auth = sessionStorage.getItem("asset_link_admin_auth");
-    if (auth !== "true") { router.push("/"); return; }
+    if (!auth) { router.push("/"); return; }
     refreshData();
   }, [router, refreshData]);
 
-  // --- 4. 業務動作邏輯 ---
-
-  /**
-   * 🚀 物理對沖：15位單號自動日期解碼
-   */
+  // --- 5. 業務邏輯對沖 ---
   const handleIdInput = (val: string) => {
     const id = val.toUpperCase();
-    setFormData({ ...formData, id });
+    setFormData(prev => ({ ...prev, id }));
     if (id.startsWith("C01") && id.length === 15) {
-      const y = id.substring(3, 7);
-      const m = id.substring(7, 9);
-      const d = id.substring(9, 11);
-      setFormData(prev => ({ ...prev, date: `${y}-${m}-${d}` }));
-      showToast("單號偵測成功：已物理擷取日期", "info");
+      const parsedDate = `${id.substring(3, 7)}-${id.substring(7, 9)}-${id.substring(9, 11)}`;
+      setFormData(prev => ({ ...prev, date: parsedDate }));
+      showToast("單號對沖成功：已解析申請日期", "success");
     }
   };
 
-  /**
-   * 🚀 物理自動化：空格自動帶入 #
-   * 物理規則：當使用者輸入空格時，自動替換為 #，確保符合 姓名#分機 格式。
-   */
-  const handleUserChange = (val: string) => {
-    const formatted = val.replace(/\s+/g, '#');
-    setFormData({ ...formData, user: formatted });
-  };
+  const handleNsrSubmit = async () => {
+    if (!formData.id || !formData.unit || !formData.userWithExt) {
+      return showToast("請完整填寫 15 位單號、單位與人員", "error");
+    }
+    if (!formData.userWithExt.includes("#")) {
+      return showToast("格式偏差：人員欄位需包含 # (姓名#分機)", "error");
+    }
 
-  /**
-   * 🚀 需求錄入存檔
-   */
-  const submitNSR = async () => {
-    if (!formData.id || !formData.unit) return showToast("單號與單位為絕對必填", "error");
-    if (formData.user && !formData.user.includes("#")) return showToast("人員格式錯誤 (需為 姓名#分機)", "error");
-    
     setIsLoading(true);
-    setLoaderText("行政數據物理封裝中...");
+    setLoaderText("施工需求入庫中...");
+    const [user, ext] = formData.userWithExt.split("#");
+    
     try {
       await submitNsrData({
-        form_id: formData.id,
-        request_date: formData.date || "",
-        area: formData.area || "A",
-        floor: formatFloor(formData.floor || ""),
-        dept_code: formData.deptCode || "N/A",
-        unit: formData.unit,
-        applicant: formData.user || "",
-        phone: formData.ext || "",
-        qty: formData.points || 1,
-        cable_type: formData.type || "CAT 6",
-        reason: formData.reason || ""
+        form_id: formData.id, request_date: formData.date, area: formData.area,
+        floor: formatFloor(formData.floor), dept_code: "N/A", unit: formData.unit,
+        applicant: user, phone: ext, qty: formData.points, cable_type: formData.type,
+        reason: formData.reason
       });
-      showToast("需求錄入成功", "success");
-      setFormData({ id: "", date: "", area: "A", floor: "", deptCode: "", unit: "", user: "", ext: "", points: 1, type: "CAT 6", reason: "" });
+      showToast("✅ 錄入成功", "success");
+      setFormData({ id: "", date: "", area: "A", floor: "", unit: "", userWithExt: "", points: 1, type: "CAT 6", reason: "" });
       refreshData();
-    } catch (e) { showToast("提交異常", "error"); } finally { setIsLoading(false); }
+    } catch {
+      showToast("單號重複或連線異常", "error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  /**
-   * 🚀 管理者物理刪除
-   */
-  const executeDelete = async () => {
-    if (!confirmDeleteId) return;
-    setIsLoading(true);
-    setLoaderText("抹除物理紀錄中...");
-    try {
-      await deleteNsrRecord(confirmDeleteId);
-      showToast("✅ 已成功抹除案件紀錄", "success");
-      setConfirmDeleteId(null);
-      refreshData();
-    } catch (e) { showToast("刪除失敗", "error"); } finally { setIsLoading(false); }
-  };
-
-  /**
-   * 🚀 全資料純淨輸出 (派工單)
-   */
-  const handleDispatch = async (item: NsrRecord) => {
-    const content = [
-      "【Asset-Link 施工派工單】",
-      `申請單號: ${item.id}`,
-      `申請日期: ${item.date}`,
-      `部門代碼: ${item.deptCode}`,
-      `使用單位: ${item.unit}`,
-      `施工地點: ${item.area}棟 ${item.floor}F`,
-      `聯絡人員: ${item.user}`,
-      `聯絡電話: ${item.ext}`,
-      `施工點位: ${item.points} 點`,
-      `線材規格: ${item.type}`,
-      `施工事由: ${item.reason}`,
-      "------------------------------",
-      "完工後請告知管理者執行核銷算帳。"
-    ].join("\n");
-
+  const handleExportDispatch = async (item: NsrRecord) => {
+    const content = `【ALink NSR 派工單】\n單號：${item.id}\n日期：${item.date}\n單位：${item.unit}\n地點：${item.area}棟 ${item.floor}F\n人員：${item.user} (#${item.ext})\n需求：${item.points} 點 (${item.type})\n事由：${item.reason}`;
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `Dispatch_${item.id}.txt`;
-    a.click();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `ALink_Dispatch_${item.id}.txt`;
+    link.click();
     
-    try {
-        await updateNsrStatus(item.id, "已派工");
-        refreshData();
-        showToast("已輸出全資料純淨派工單", "success");
-    } catch (e) { showToast("狀態更新失敗", "error"); }
+    await updateNsrStatus(item.id, "已派工");
+    refreshData();
+    showToast("派工單已輸出，狀態變更為已派工", "info");
   };
 
-  const previewTotal = useMemo(() => {
-    if (!settleItem) return 0;
-    return calculateNsrPrice(
-        settleItem.type, 
-        settleItem.points, 
-        settleConfig.isAddon, 
-        settleConfig.usePanel
-    );
-  }, [settleItem, settleConfig]);
+  const handleDelete = async (id: string) => {
+    if (!confirm(`⚠️ 警告：即將執行物理抹除單號 [${id}]\n此動作將使核銷紀錄永久消失，確定執行？`)) return;
+    setIsLoading(true);
+    try {
+      await deleteNsrRecord(id);
+      showToast("已從雲端數據庫物理刪除", "success");
+      refreshData();
+    } catch { showToast("刪除失敗", "error"); }
+    finally { setIsLoading(false); }
+  };
 
-  const confirmSettleAction = async () => {
+  const handleSettleCommit = async () => {
     if (!settleItem) return;
     setIsLoading(true);
-    setLoaderText("對沖 115 合約財務...");
+    setLoaderText("執行 115 合約計價核銷...");
     try {
       await settleNsrRecord({
         form_id: settleItem.id,
-        isAddon: settleConfig.isAddon,
-        usePanel: settleConfig.usePanel,
-        finishRemark: settleConfig.remark || "完工核銷"
+        isAddon: isAddonWork,
+        usePanel: usePanel,
+        finishRemark: `核銷完成：${isAddonWork ? "加成施工 " : ""}${usePanel ? "+面板" : ""}`
       });
-      showToast(`結算成功：$${previewTotal.toLocaleString()}`, "success");
-      setIsSettleOpen(false);
+      showToast("✅ 核銷結算完成", "success");
+      setSettleItem(null);
       refreshData();
-    } catch (e) { showToast("核銷處理失敗", "error"); } finally { setIsLoading(false); }
+    } catch { showToast("結算入庫失敗", "error"); }
+    finally {
+      setIsLoading(false);
+    }
   };
 
   const pendingPool = globalNsrData.filter(r => ["未處理", "待處理", "已派工"].includes(r.status));
-  const finishPool = globalNsrData.filter(r => r.status === "已完工" || (r.status === "已派工" && !r.total));
+  const settlePool = globalNsrData.filter(r => r.status === "已完工");
 
   return (
-    <div className="bg-[#f2f5f8] min-h-screen text-[#1d1d1f] font-sans antialiased overflow-x-hidden">
+    <div className="bg-[#f8fafc] min-h-screen font-sans text-slate-900 antialiased overflow-x-hidden relative">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .glass-panel { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 10px 40px -10px rgba(0,0,0,0.04); }
+        .nsr-input { width: 100%; background: rgba(241, 245, 249, 0.6); border: none; border-radius: 1.25rem; padding: 16px 20px; font-weight: 700; font-size: 14px; transition: all 0.3s; }
+        .nsr-input:focus { background: white; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1); outline: none; }
+        .saas-label { font-size: 11px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; display: block; margin-left: 6px; }
+        .black-card { background: #0f172a; color: white; border-radius: 3rem; }
+        .neon-text { text-shadow: 0 0 10px rgba(37, 99, 235, 0.2); }
+      `}} />
+
+      <div className="fixed z-0 blur-[120px] opacity-15 rounded-full pointer-events-none bg-blue-600 w-[700px] h-[700px] -top-64 -left-64 animate-pulse"></div>
+      <div className="fixed z-0 blur-[120px] opacity-10 rounded-full pointer-events-none bg-emerald-400 w-[600px] h-[600px] bottom-0 right-0 animate-pulse delay-700"></div>
+
       <AdminSidebar currentRoute="/nsr" isOpen={isSidebarOpen} onLogout={() => router.push("/")} />
 
-      <main className="lg:ml-64 p-6 lg:p-10 flex flex-col gap-8">
-        <TopNavbar 
-            title="NSR 需求管理與計價核銷中樞" 
-            onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} 
-        />
+      <main className="lg:ml-64 min-h-screen flex flex-col p-6 lg:p-10 relative z-10">
+        <TopNavbar title="NSR 網點需求與計價核銷中樞" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
 
-        <div className="grid grid-cols-12 gap-8 max-w-[1600px] mx-auto w-full">
-          
-          <div className="col-span-12 lg:col-span-4">
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 border border-white sticky top-10">
-                <div className="flex items-center gap-3 mb-8 border-b pb-4">
-                    <span className="material-symbols-outlined text-blue-600 text-3xl font-black">edit_square</span>
-                    <h2 className="text-xl font-black text-slate-800">錄入施工需求</h2>
-                </div>
-                
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 mt-10">
+          <section className="lg:col-span-4 animate-in fade-in slide-in-from-left-6 duration-700">
+            <div className="glass-panel p-10 rounded-[3rem] sticky top-10 border border-white">
+                <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-3">
+                    <span className="material-symbols-outlined text-blue-600 text-3xl">edit_square</span> 錄入施工需求
+                </h2>
                 <div className="space-y-6">
                     <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block mb-2 tracking-widest" htmlFor="nsr-id-in">申請單號 (15位物理格式)</label>
-                        <input id="nsr-id-in" value={formData.id} onChange={e => handleIdInput(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-mono font-black text-blue-700 focus:ring-2 focus:ring-blue-600 outline-none transition-all shadow-inner" placeholder="C01YYYYMMDDSSSS" maxLength={15} />
+                        <label className="saas-label" htmlFor="nsr-id-in">申請單號 (15位物理單號)</label>
+                        <input id="nsr-id-in" title="申請單號" value={formData.id} onChange={e => handleIdInput(e.target.value)} placeholder="C01YYYYMMDDSSSS" className="nsr-input font-mono text-blue-600" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 ml-1 block" htmlFor="nsr-date-in">申請日期</label>
-                            <input id="nsr-date-in" type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 font-bold text-sm" />
+                        <div>
+                            <label className="saas-label" htmlFor="nsr-date-in">申請日期</label>
+                            <input id="nsr-date-in" title="申請日期" type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="nsr-input text-xs" />
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 ml-1 block" htmlFor="nsr-area-sel">院區</label>
-                            <select id="nsr-area-sel" title="院區" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 font-bold">
+                        <div>
+                            <label className="saas-label" htmlFor="nsr-area-sel">棟別</label>
+                            <select id="nsr-area-sel" title="棟別選擇" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} className="nsr-input">
                                 {["A","B","C","D","E","G","H","I","K","T"].map(v => <option key={v} value={v}>{v} 棟</option>)}
                             </select>
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 ml-1 block" htmlFor="nsr-floor-in">樓層</label>
-                            <input id="nsr-floor-in" value={formData.floor} onChange={e => setFormData({...formData, floor: e.target.value})} onBlur={e => setFormData({...formData, floor: formatFloor(e.target.value)})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 font-bold" placeholder="05" />
+                        <div>
+                            <label className="saas-label" htmlFor="nsr-floor-in">樓層</label>
+                            <input id="nsr-floor-in" title="樓層" placeholder="05" value={formData.floor} onChange={e => setFormData({...formData, floor: e.target.value})} className="nsr-input" />
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 ml-1 block" htmlFor="nsr-pts-in">點位數量</label>
-                            <input id="nsr-pts-in" type="number" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value)})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3.5 font-black text-center shadow-inner" min={1} />
-                        </div>
-                    </div>
-                    <div className="p-5 bg-blue-50/50 rounded-3xl border border-blue-100">
-                        <label className="text-[10px] font-black text-blue-600 ml-1 block mb-3 uppercase tracking-widest">合約對沖規格</label>
-                        <div className="flex gap-3">
-                            <button type="button" onClick={() => setFormData({...formData, type: "CAT 6"})} className={`flex-1 py-3.5 rounded-xl font-black text-xs transition-all ${formData.type === 'CAT 6' ? 'bg-white shadow-lg text-blue-600 border border-blue-100' : 'text-slate-400'}`}>CAT 6</button>
-                            <button type="button" onClick={() => setFormData({...formData, type: "CAT 6A"})} className={`flex-1 py-3.5 rounded-xl font-black text-xs transition-all ${formData.type === 'CAT 6A' ? 'bg-white shadow-lg text-blue-600 border border-blue-100' : 'text-slate-400'}`}>CAT 6A</button>
+                        <div>
+                            <label className="saas-label" htmlFor="nsr-unit-in">申請單位</label>
+                            {/* 🚀 物理修復：將 setUnit 改為 setFormData 連動 */}
+                            <input id="nsr-unit-in" title="申請單位" placeholder="請輸入單位名稱" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="nsr-input" />
                         </div>
                     </div>
                     <div>
-                        <label className="text-[10px] font-black text-slate-400 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-dept-in">部門代碼</label>
-                        <input id="nsr-dept-in" value={formData.deptCode} onChange={e => setFormData({...formData, deptCode: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold mb-3 shadow-inner" placeholder="例如：1N12" title="部門代碼" />
-                        
-                        <label className="text-[10px] font-black text-slate-400 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-unit-in">使用單位</label>
-                        <input id="nsr-unit-in" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold mb-3 shadow-inner" placeholder="單位名稱" />
-                        
-                        <label className="text-[10px] font-black text-slate-400 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-user-in">申請人員 (物理自動化)</label>
-                        <input id="nsr-user-in" value={formData.user} onChange={e => handleUserChange(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold shadow-inner mb-3 text-blue-700" placeholder="姓名 分機 (空格自動帶入#)" title="姓名#分機" />
-                        
-                        <label className="text-[10px] font-black text-blue-600 ml-1 block mb-2 uppercase tracking-widest" htmlFor="nsr-reason-in">施工事由</label>
-                        <textarea id="nsr-reason-in" value={formData.reason} onChange={e => setFormData({...formData, reason: e.target.value})} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold shadow-inner min-h-[100px]" placeholder="詳細描述施工原因與位置..." title="施工事由" />
+                        <label className="saas-label !text-blue-600" htmlFor="nsr-user-in">申請人 (姓名#分機)</label>
+                        <input id="nsr-user-in" title="申請人姓名與分機" placeholder="王大明#1234" value={formData.userWithExt} onChange={e => setFormData({...formData, userWithExt: e.target.value})} className="nsr-input" />
                     </div>
-                    <button type="button" onClick={submitNSR} className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black shadow-2xl hover:bg-blue-900 transition-all uppercase tracking-widest active:scale-95">存入 115 數據庫</button>
-                </div>
-            </section>
-          </div>
-
-          {/* 右軌：監控池 */}
-          <div className="col-span-12 lg:col-span-8 space-y-8">
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/40">
-                <div className="flex justify-between items-center mb-8 pb-4 border-b">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><span className="material-symbols-outlined text-orange-500">construction</span> 施工監控佇列</h3>
-                    <span className="bg-orange-50 text-orange-600 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">{pendingPool.length} 案件中</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-h-[450px] overflow-y-auto pr-3">
-                    {pendingPool.map(item => (
-                        <div key={item.id} className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 hover:bg-white hover:shadow-xl transition-all group relative overflow-hidden">
-                            <div className="flex justify-between mb-4 relative z-10">
-                                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${item.status === '已派工' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-slate-200 text-slate-500'}`}>{item.status}</span>
-                                <div className="flex gap-2 items-center">
-                                    <span className="font-mono text-[10px] font-black text-slate-300">{item.id}</span>
-                                    <button onClick={() => setConfirmDeleteId(item.id)} className="w-7 h-7 rounded-full bg-white text-red-500 flex items-center justify-center shadow-sm hover:bg-red-500 hover:text-white transition-all">
-                                        <span className="material-symbols-outlined text-[16px]">delete</span>
-                                    </button>
-                                </div>
-                            </div>
-                            <h4 className="font-black text-base text-slate-800 mb-1 relative z-10">{item.unit}</h4>
-                            <p className="text-[11px] font-bold text-slate-400 mb-5 relative z-10">{item.area}棟 {item.floor}F | {item.points}點 ({item.type})</p>
-                            <div className="flex gap-2 relative z-10">
-                                <button type="button" onClick={() => handleDispatch(item)} className="flex-1 py-3 bg-white border border-slate-200 rounded-2xl font-black text-[10px] hover:text-blue-600 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><span className="material-symbols-outlined text-base">download_for_offline</span> 派工單</button>
-                                <button type="button" onClick={() => updateNsrStatus(item.id, "已完工").then(refreshData)} className="flex-1 py-3 bg-slate-800 text-white rounded-2xl font-black text-[10px] hover:bg-emerald-600 transition-all shadow-md active:scale-95">廠商完工</button>
-                            </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="saas-label" htmlFor="nsr-points-in">需求點位</label>
+                            <input id="nsr-points-in" title="需求點位" type="number" min={1} value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 1})} className="nsr-input" />
                         </div>
-                    ))}
-                </div>
-            </section>
-
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/40 border-t-[10px] border-t-emerald-500">
-                <div className="flex justify-between items-center mb-10">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><span className="material-symbols-outlined text-emerald-600 text-3xl font-black">payments</span> 115 完工計價核銷</h3>
-                    <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">等待結算案量</p>
-                        <p className="text-4xl font-black text-emerald-600 font-mono tracking-tighter leading-none">{finishPool.length}</p>
+                        <div>
+                            <label className="saas-label" htmlFor="nsr-type-sel">規格</label>
+                            <select id="nsr-type-sel" title="規格選擇" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})} className="nsr-input">
+                                <option>CAT 6</option><option>CAT 6A</option>
+                            </select>
+                        </div>
                     </div>
+                    <div>
+                        <label className="saas-label" htmlFor="nsr-reason-in">施工具體事由</label>
+                        <textarea id="nsr-reason-in" title="施工事由" placeholder="請描述施工內容..." value={formData.reason} onChange={e => setFormData({...formData, reason: e.target.value})} className="nsr-input min-h-[100px] resize-none py-4" />
+                    </div>
+                    <button onClick={handleNsrSubmit} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black shadow-2xl hover:bg-blue-600 transition-all active:scale-95 uppercase tracking-widest text-sm">
+                      存入 115 年度數據庫
+                    </button>
                 </div>
-                <div className="space-y-4">
-                    {finishPool.length === 0 ? (
-                        <div className="py-16 text-center text-slate-300 font-black italic uppercase tracking-widest text-xs opacity-50">目前無待算帳案件</div>
-                    ) : (
-                        finishPool.map(item => (
-                            <div key={item.id} className="bg-emerald-50/30 p-8 rounded-[2.5rem] border border-emerald-100 flex justify-between items-center group hover:bg-emerald-50 transition-all">
-                                <div>
-                                    <div className="flex items-center gap-4 mb-2">
-                                        <span className="font-black text-slate-800 text-xl tracking-tight">{item.unit}</span>
-                                        <span className="text-[10px] font-mono font-black text-slate-400 px-3 py-1 bg-white rounded-full border shadow-sm">#${item.id}</span>
-                                    </div>
-                                    <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-2">
-                                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                                        {item.points} 點施工完畢 | 合約基準：{item.type}
-                                    </p>
+            </div>
+          </section>
+
+          <section className="lg:col-span-8 space-y-10 animate-in fade-in slide-in-from-right-6 duration-700">
+            <div className="glass-panel p-10 rounded-[3rem]">
+                <div className="flex justify-between items-center mb-8">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><span className="material-symbols-outlined text-orange-500">pending_actions</span> 施工監控池</h3>
+                    <span className="bg-slate-100 text-slate-500 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">目前待辦：{pendingPool.length} 案件</span>
+                </div>
+                {pendingPool.length === 0 ? (
+                    <div className="py-20 text-center text-slate-300 italic font-bold">目前無施工中案件</div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {pendingPool.map(item => (
+                            <div key={item.id} className="bg-white/50 p-6 rounded-[2.5rem] border border-slate-100 hover:bg-white hover:shadow-xl transition-all relative group">
+                                <button onClick={() => handleDelete(item.id)} title="物理刪除" className="absolute top-4 right-4 w-8 h-8 rounded-full bg-red-50 text-red-300 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all flex items-center justify-center"><span className="material-symbols-outlined text-sm">delete</span></button>
+                                <div className="flex justify-between items-center mb-4">
+                                    <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${item.status === '已派工' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{item.status}</span>
+                                    <span className="font-mono text-[10px] text-slate-300">#{item.id}</span>
                                 </div>
-                                <div className="flex gap-3">
-                                    <button onClick={() => setConfirmDeleteId(item.id)} className="w-12 h-12 rounded-2xl bg-white border border-red-100 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm">
-                                        <span className="material-symbols-outlined">delete</span>
+                                <h4 className="font-black text-lg text-slate-800">{item.unit}</h4>
+                                <p className="text-[11px] font-bold text-slate-400 mt-2 mb-6">{item.area}棟 {item.floor}F | {item.points}點 ({item.type})</p>
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleExportDispatch(item)} title="匯出派工單" className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-black text-[10px] uppercase hover:bg-blue-50 hover:text-blue-600 transition-all flex items-center justify-center gap-2 shadow-sm">
+                                        <span className="material-symbols-outlined text-sm">output</span> 派工
                                     </button>
-                                    <button type="button" onClick={() => { setSettleItem(item); setIsSettleOpen(true); }} className="px-10 py-5 bg-emerald-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 active:scale-95 transition-all flex items-center gap-3">
-                                        <span className="material-symbols-outlined">calculate</span> 執行算帳
-                                    </button>
+                                    <button onClick={() => updateNsrStatus(item.id, "已完工").then(refreshData)} title="回報完工" className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-black text-[10px] uppercase hover:bg-emerald-600 transition-all shadow-md">完工</button>
                                 </div>
                             </div>
-                        )
-                    ))}
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <div className="glass-panel p-10 rounded-[3rem] border-t-[12px] border-t-emerald-500">
+                <div className="flex justify-between items-center mb-8">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><span className="material-symbols-outlined text-emerald-500">payments</span> 115 年度計價結算池</h3>
                 </div>
-            </section>
-          </div>
+                {settlePool.length === 0 ? (
+                    <div className="py-12 text-center text-slate-300 italic font-bold">無待核銷案件</div>
+                ) : (
+                    <div className="space-y-4">
+                        {settlePool.map(item => (
+                            <div key={item.id} className="bg-emerald-50/40 p-8 rounded-[2.5rem] border border-emerald-100 flex justify-between items-center group hover:bg-white transition-all shadow-sm">
+                                <div>
+                                    <span className="font-black text-slate-800 text-xl tracking-tight">{item.unit}</span>
+                                    <p className="text-[11px] font-bold text-emerald-600 mt-2">完工待結算 | {item.type} | {item.points} 點位</p>
+                                </div>
+                                <button onClick={() => { setSettleItem(item); setIsAddonWork(false); setUsePanel(false); }} title="執行計價核銷" className="px-10 py-5 bg-emerald-600 text-white rounded-[2rem] font-black text-xs shadow-xl active:scale-95 hover:brightness-110 transition-all flex items-center gap-3">
+                                    <span className="material-symbols-outlined">calculate</span> 執行算帳
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+          </section>
         </div>
       </main>
 
-      {/* 🚀 物理刪除確認 Modal */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setConfirmDeleteId(null)} />
-            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl relative border-t-[10px] border-t-red-600 animate-in zoom-in-95">
-                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-red-600 mx-auto mb-6"><span className="material-symbols-outlined text-4xl font-black">warning</span></div>
-                <h2 className="text-xl font-black text-slate-900 text-center mb-2 tracking-tight">物理刪除確認？</h2>
-                <p className="text-xs font-bold text-slate-500 text-center mb-8 uppercase tracking-widest">案號：{confirmDeleteId}<br/>此動作不可復原。</p>
-                <div className="flex gap-4">
-                    <button onClick={() => setConfirmDeleteId(null)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-400 uppercase text-xs">取消離開</button>
-                    <button onClick={executeDelete} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black shadow-lg shadow-red-900/20 active:scale-95 transition-all uppercase text-xs">確認抹除</button>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* 🚀 115 年度結算 Modal */}
-      {isSettleOpen && settleItem && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-md" onClick={() => setIsSettleOpen(false)} />
-            <div className="bg-white w-full max-w-3xl rounded-[3.5rem] p-12 shadow-2xl relative animate-in zoom-in-95 border-b-[10px] border-b-emerald-500">
-                <h2 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">115 年度施工計價對沖</h2>
-                <p className="text-sm font-bold text-slate-400 mb-12 border-b border-slate-100 pb-6 uppercase">案件識別：{settleItem.id} | {settleItem.unit}</p>
+      {settleItem && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-slate-950/85 backdrop-blur-xl animate-in zoom-in-95">
+            <div className="bg-slate-900 w-full max-w-2xl rounded-[4rem] p-12 shadow-2xl relative overflow-hidden text-white border border-white/10">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full -mr-40 -mt-40 animate-pulse"></div>
+                <h2 className="text-4xl font-black tracking-tighter mb-4 neon-text">115 年度財務對沖</h2>
+                <p className="text-slate-500 text-xs font-black uppercase tracking-[0.4em] mb-10 border-b border-slate-800 pb-8">核銷對象：{settleItem.id} / {settleItem.unit}</p>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-12">
-                    <div className="space-y-8">
-                        <div className="space-y-3">
-                            <label className="text-[11px] font-black text-slate-500 uppercase ml-1 tracking-widest" htmlFor="addon-select">施工性質判定</label>
-                            <select id="addon-select" title="加成判定" value={settleConfig.isAddon ? "yes" : "no"} onChange={e => setSettleConfig({...settleConfig, isAddon: e.target.value === "yes"})} className="w-full bg-slate-100 rounded-2xl px-6 py-5 font-black text-sm text-blue-700 border-none appearance-none cursor-pointer">
-                                <option value="no">一般常態施工 (標價)</option>
-                                <option value="yes">加成施工 (緊急/夜間/假日)</option>
-                            </select>
+                <div className="space-y-10 mb-12">
+                    <div className="grid grid-cols-2 gap-10">
+                        <div className="space-y-2">
+                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">合約基準規格</span>
+                            <p className="text-2xl font-black text-blue-400">{settleItem.type}</p>
                         </div>
-                        <div className="space-y-3">
-                            <label className="text-[11px] font-black text-slate-500 uppercase ml-1 tracking-widest">硬體耗材對沖</label>
-                            <button type="button" onClick={() => setSettleConfig({...settleConfig, usePanel: !settleConfig.usePanel})} className={`w-full py-6 rounded-2xl font-black text-xs transition-all border-2 flex items-center justify-center gap-4 ${settleConfig.usePanel ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-inner' : 'border-slate-100 text-slate-400 bg-slate-50 hover:bg-slate-100'}`}>
-                                <span className="material-symbols-outlined text-xl">{settleConfig.usePanel ? 'check_box' : 'check_box_outline_blank'}</span>
-                                {settleConfig.usePanel ? '已加購 PANEL 面板 (+$1,000)' : '不含 PANEL 資訊面板採購'}
-                            </button>
-                        </div>
-                        <div className="space-y-3">
-                            <label className="text-[11px] font-black text-slate-500 uppercase ml-1 tracking-widest" htmlFor="finish-remark">行政核銷備註</label>
-                            <textarea id="finish-remark" value={settleConfig.remark} onChange={e => setSettleConfig({...settleConfig, remark: e.target.value})} className="w-full bg-slate-50 rounded-2xl px-5 py-4 font-bold text-sm shadow-inner" placeholder="輸入結算備註..." title="結算備註" />
+                        <div className="space-y-2 text-right">
+                            <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">物理點位總數</span>
+                            <p className="text-2xl font-black text-white">{settleItem.points} 點</p>
                         </div>
                     </div>
 
-                    <div className="bg-slate-900 rounded-[3rem] p-10 text-white flex flex-col justify-between shadow-2xl relative overflow-hidden group">
-                        <div className="space-y-6 relative z-10">
-                            <div className="flex justify-between border-b border-white/10 pb-4"><span className="text-slate-500 font-bold text-[11px] uppercase tracking-widest">合約規格</span><span className="font-black text-blue-400 text-lg">{settleItem.type}</span></div>
-                            <div className="flex justify-between border-b border-white/10 pb-4"><span className="text-slate-500 font-bold text-[11px] uppercase tracking-widest">點位計算</span><span className="font-black text-white text-lg">{settleItem.points} 點</span></div>
-                            <div className="flex justify-between"><span className="text-slate-500 font-bold text-[11px] uppercase tracking-widest">階梯單價預估</span><span className="font-black text-emerald-400 text-lg">${((previewTotal - (settleConfig.usePanel?1000:0))/settleItem.points).toLocaleString()}</span></div>
-                        </div>
-                        <div className="mt-12 text-center relative z-10">
-                            <p className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.3em] mb-3">結算預估總額 (含稅)</p>
-                            <p className="text-6xl font-black font-mono tracking-tighter text-white group-hover:scale-110 transition-transform duration-300">${previewTotal.toLocaleString()}</p>
-                        </div>
+                    <div className="space-y-6 bg-white/5 p-8 rounded-[2.5rem] border border-white/5">
+                        <label className="flex items-center justify-between cursor-pointer group">
+                            <div className="flex items-center gap-4">
+                                <input id="addon-check" title="加成施工" type="checkbox" checked={isAddonWork} onChange={e => setIsAddonWork(e.target.checked)} className="w-6 h-6 rounded-lg border-slate-700 bg-slate-800 text-blue-500 focus:ring-blue-600" />
+                                <span className="text-sm font-black text-slate-300 group-hover:text-white transition-colors">是否符合「加成施工」條件？</span>
+                            </div>
+                            <span className="text-[10px] font-black text-slate-500 uppercase">夜間/複雜</span>
+                        </label>
+                        <label className="flex items-center justify-between cursor-pointer group">
+                            <div className="flex items-center gap-4">
+                                <input id="panel-check" title="加購面板" type="checkbox" checked={usePanel} onChange={e => setUsePanel(e.target.checked)} className="w-6 h-6 rounded-lg border-slate-700 bg-slate-800 text-emerald-500 focus:ring-emerald-600" />
+                                <span className="text-sm font-black text-slate-300 group-hover:text-white transition-colors">是否加購 ㄑ字型 24 埠 PANEL 空架？</span>
+                            </div>
+                            <span className="text-[10px] font-black text-emerald-500 uppercase">+$1,000</span>
+                        </label>
                     </div>
                 </div>
 
-                <div className="flex gap-5">
-                    <button type="button" onClick={() => setIsSettleOpen(false)} className="flex-1 py-6 rounded-3xl font-black text-slate-400 hover:bg-slate-50 transition-all uppercase tracking-widest text-xs">取消離開</button>
-                    <button type="button" onClick={confirmSettleAction} className="flex-[2] py-6 bg-emerald-600 text-white rounded-3xl font-black shadow-2xl uppercase tracking-widest text-xs flex items-center justify-center gap-4 active:scale-95">
-                        <span className="material-symbols-outlined text-lg font-black">fact_check</span> 確認核銷並轉入待請款
+                <div className="text-center bg-white/5 p-12 rounded-[3rem] mb-12 border border-white/5 shadow-inner">
+                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.6em] mb-4">本案對沖預算總額 (含稅)</p>
+                    <p className="text-8xl font-black font-mono tracking-tighter text-white neon-text">
+                        <span className="text-4xl mr-2 text-slate-500">$</span>
+                        {calculateNsrPrice(settleItem.type, settleItem.points, isAddonWork, usePanel).toLocaleString()}
+                    </p>
+                </div>
+
+                <div className="flex gap-6">
+                    <button onClick={() => setSettleItem(null)} className="flex-1 py-6 rounded-[2rem] font-black text-slate-500 hover:text-white transition-all uppercase tracking-widest text-xs">取消核銷</button>
+                    <button onClick={handleSettleCommit} className="flex-[2] py-6 bg-emerald-600 text-white rounded-[2.5rem] font-black shadow-2xl shadow-emerald-500/20 uppercase tracking-widest text-xs flex items-center justify-center gap-4 active:scale-95 hover:brightness-110 transition-all">
+                        <span className="material-symbols-outlined font-black">fact_check</span> 確認結算並提交會計
                     </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* 物理遮罩 */}
       {isLoading && (
-        <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-white/90 backdrop-blur-xl">
-           <div className="w-16 h-16 border-[6px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-8 shadow-2xl"></div>
-           <p className="text-sm font-black text-blue-600 uppercase tracking-[0.4em] animate-pulse">{loaderText}</p>
+        <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-white/80 backdrop-blur-2xl">
+          <div className="w-20 h-20 border-[8px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-8 shadow-2xl"></div>
+          <p className="text-blue-600 font-black tracking-[0.5em] uppercase text-xs animate-pulse">{loaderText}</p>
         </div>
       )}
 
-      {/* 物理通知氣泡 */}
-      <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[3100] px-10 py-6 rounded-[2.5rem] shadow-2xl font-black text-xs text-white flex items-center gap-5 animate-in slide-in-from-bottom duration-500 bg-slate-900/95 backdrop-blur-md">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg ${toast?.type === 'error' ? 'bg-red-50' : 'bg-emerald-500'}`}>
-            <span className="material-symbols-outlined text-lg text-white">{toast?.type === "success" ? "done_all" : "info"}</span>
+      <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[4000] flex flex-col gap-4 pointer-events-none w-full max-w-sm px-6">
+        {toasts.map(t => (
+          <div key={t.id} className={`px-10 py-6 rounded-[2.5rem] shadow-2xl font-black text-xs animate-in slide-in-from-bottom-4 flex items-center gap-5 border border-white/10 text-white backdrop-blur-xl ${t.type === "success" ? "bg-emerald-600/90" : t.type === "error" ? "bg-red-600/90" : "bg-slate-900/90"}`}>
+            <span className="material-symbols-outlined text-2xl">{t.type === 'success' ? 'verified' : t.type === 'error' ? 'report' : 'info'}</span>
+            <span className="tracking-[0.2em]">{t.msg}</span>
           </div>
-          <span className="tracking-wide text-sm font-bold">{toast?.msg}</span>
+        ))}
       </div>
     </div>
   );
