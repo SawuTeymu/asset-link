@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Asset-Link: 全院資產資安對沖系統",
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
