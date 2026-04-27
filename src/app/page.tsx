@@ -119,8 +119,8 @@ export default function LoginPage() {
           <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-primary/20 rotate-3 transition-transform hover:rotate-0 duration-500">
             <span className="material-symbols-outlined text-white text-4xl">token</span>
           </div>
-          <h1 className="text-3xl font-black tracking-tighter mb-2">Asset-Link <span className="text-primary">V0.0</span></h1>
-          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">ERI / NSR 雙軌自動化中樞系統</p>
+          <h1 className="text-3xl font-black tracking-tighter mb-2">A-L-I-N-K <span className="text-primary">V0.0</span></h1>
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">預約裝機/IP申請系統</p>
         </div>
 
         {/* 登入表單區塊 */}
