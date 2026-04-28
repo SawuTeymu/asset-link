@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-// --- 🚀 引入後端 Server Actions (保留) ---
+// --- 🚀 引入後端 Server Actions (100% 保留) ---
 import { 
   getDashboardStats, 
   getIpUsageStats, 
@@ -14,11 +14,11 @@ import {
 import { getNsrList } from "@/lib/actions/nsr";
 import { getAllUsers } from "@/lib/actions/users";
 
-// --- 🚀 引入佈局 ---
+// --- 🚀 引入佈局組件 ---
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import TopNavbar from "@/components/layout/TopNavbar";
 
-// --- 🚀 圖表引擎 (保留) ---
+// --- 🚀 圖表引擎 (Chart.js) ---
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
@@ -27,9 +27,8 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
 /**
  * ==========================================
  * 檔案：src/app/admin/page.tsx
- * 狀態：V200.0 Titanium Crystal (Axe 物理修復版)
- * 物理職責：行政中樞、VANS 大數據解析 (0 簡化)、無障礙對正。
- * 修復項目：補齊 Line 184 附近 Input 之 title 屬性。
+ * 狀態：V200.0 Titanium Crystal (繁體中文版)
+ * 物理職責：行政中樞、VANS 大數據解析 (0 刪除)、資安軌跡持久化。
  * ==========================================
  */
 
@@ -40,7 +39,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const vansInputRef = useRef<HTMLInputElement>(null);
 
-  // --- 1. 核心狀態 (100% 保留，共 12 個狀態矩陣) ---
+  // --- 1. 核心數據矩陣狀態 ---
   const [activeTab, setActiveTab] = useState<"dashboard" | "history" | "vans" | "users">("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,10 +59,10 @@ export default function AdminDashboard() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 2. 數據對沖邏輯 (100% 保留，跨表連集與狀態對正) ---
+  // --- 2. 數據同步中樞 (0 簡化) ---
   const syncCoreData = useCallback(async () => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
-    if (!isAuth) { router.push("/"); return; }
+    if (isAuth !== "true") { router.push("/"); return; }
     setIsLoading(true);
     try {
       const [eriStats, nsrData, vans, ips, dbUsers, cloudHistory] = await Promise.all([
@@ -77,14 +76,14 @@ export default function AdminDashboard() {
         nsrPending: nsrTyped.filter(r => ["未處理", "待處理", ""].includes(String(r.處理狀態 || "").trim())).length,
         nsrSettle: nsrTyped.filter(r => String(r.處理狀態 || "").trim() === "待請款").length
       });
-      setVansMetrics({ ...(vans as VansMetrics), lastAuditAt: lastAudit?.created_at ? new Date(lastAudit.created_at).toLocaleString() : "尚無存檔紀錄" });
+      setVansMetrics({ ...(vans as VansMetrics), lastAuditAt: lastAudit?.created_at ? new Date(lastAudit.created_at).toLocaleString() : "尚無持久化紀錄" });
       setIpData(ips || []); setUsers(dbUsers as UserRecord[] || []); setHistoryRecords(cloudHistory || []);
     } finally { setIsLoading(false); }
   }, [router]);
 
   useEffect(() => { syncCoreData(); }, [syncCoreData]);
 
-  // --- 3. VANS 大數據解析核心 (0 簡化：處理 BOM 與物理偏差判定) ---
+  // --- 3. VANS 大數據解析 (0 刪除：處理 BOM 字元) ---
   const handleVansUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     setIsLoading(true);
@@ -93,7 +92,6 @@ export default function AdminDashboard() {
       try {
         const text = event.target?.result as string;
         const lines = text.split('\n');
-        // 物理對沖：處理 CSV 隱藏之 BOM 字元
         const headers = lines[0].split(',').map(h => h.trim().replace(/^\uFEFF/, ''));
         const parsed = lines.slice(1).filter(l => l.trim() !== "").map(line => {
           const values = line.split(',');
@@ -109,14 +107,14 @@ export default function AdminDashboard() {
           const matched = historyRecords.find(r => r.核定ip === vIp);
           if(matched) {
             const aMac = String(matched.主要mac || "").toUpperCase();
-            if(aMac && vMac && aMac !== vMac) { mErr++; conflictsList.push({ type: 'MAC_ERROR', ip: vIp, vansName: v['名稱'], assetMac: aMac, desc: "MAC 物理偏差" }); }
-            if (String(matched.行政備註 || "").includes("汰換") && vStatus === "在線") { zAmb++; conflictsList.push({ type: 'ZOMBIE', ip: vIp, vansName: v['名稱'], assetMac: aMac, desc: "報廢設備非法上線" }); }
-          } else if (vStatus === "在線") { iCon++; conflictsList.push({ type: 'IP_CONFLICT', ip: vIp, vansName: v['名稱'], assetMac: "無紀錄", desc: "黑戶 IP 佔用" }); }
+            if(aMac && vMac && aMac !== vMac) { mErr++; conflictsList.push({ type: 'MAC_ERROR', ip: vIp, vansName: v['名稱'], assetMac: aMac, desc: "MAC 物理位置不吻合" }); }
+            if (String(matched.行政備註 || "").includes("汰換") && vStatus === "在線") { zAmb++; conflictsList.push({ type: 'ZOMBIE', ip: vIp, vansName: v['名稱'], assetMac: aMac, desc: "報廢設備非法連網" }); }
+          } else if (vStatus === "在線") { iCon++; conflictsList.push({ type: 'IP_CONFLICT', ip: vIp, vansName: v['名稱'], assetMac: "無紀錄", desc: "黑戶 IP 佔用網段" }); }
         });
         setVansMetrics(prev => ({ ...prev, macErrorCount: mErr, ipConflictCount: iCon, zombieAlertCount: zAmb }));
         setVansConflicts(conflictsList);
-        showToast("大數據對沖完成", "info");
-      } catch { showToast("CSV 解析失敗", "error"); }
+        showToast("大數據物理對沖完成", "info");
+      } catch { showToast("CSV 解析異常", "error"); }
       finally { setIsLoading(false); }
     };
     reader.readAsText(file);
@@ -134,7 +132,7 @@ export default function AdminDashboard() {
         zombies: vansMetrics.zombieAlertCount,
         conflict_data: vansConflicts
       }]);
-      showToast("稽核歷史已持久化", "success");
+      showToast("✅ 資安稽核歷史已持久化存檔", "success");
       syncCoreData();
     } finally { setIsSaving(false); }
   };
@@ -142,7 +140,6 @@ export default function AdminDashboard() {
   return (
     <div className="bg-[#020617] min-h-screen text-slate-300 font-sans antialiased overflow-x-hidden relative selection:bg-blue-500/30">
       
-      {/* 🚀 Titanium Crystal 視覺樣式表 */}
       <style dangerouslySetInnerHTML={{ __html: `
         .bento-card { background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(20px); border-radius: 1.5rem; }
         .stat-glow { text-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
@@ -156,9 +153,8 @@ export default function AdminDashboard() {
       <AdminSidebar currentRoute="/admin" isOpen={isSidebarOpen} onLogout={() => router.push("/")} />
 
       <main className="lg:ml-64 min-h-screen flex flex-col p-6 lg:p-8 relative z-10">
-        <TopNavbar title="行政大數據對沖矩陣" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <TopNavbar title="行政大數據對沖矩陣總署" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
 
-        {/* --- 視圖 A: 行政對沖 Dashboard --- */}
         {activeTab === "dashboard" && (
           <div className="space-y-6 mt-8 animate-in fade-in duration-700">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -171,7 +167,7 @@ export default function AdminDashboard() {
                 <div className="text-6xl font-black text-white mt-2 font-mono stat-glow">{vansMetrics.ipConflictCount}</div>
               </div>
               <div className="bento-card p-8 bg-slate-900/50">
-                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">持久化存檔紀錄</span>
+                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">最近稽核存檔紀錄</span>
                 <div className="text-sm font-bold text-slate-300 mt-6 tracking-tight">{vansMetrics.lastAuditAt}</div>
               </div>
             </div>
@@ -181,7 +177,7 @@ export default function AdminDashboard() {
                 { l: "ERI 待核定", v: stats.pending, c: "text-blue-400" },
                 { l: "NSR 未處理", v: stats.nsrPending, c: "text-slate-400" },
                 { l: "NSR 待核銷", v: stats.nsrSettle, c: "text-emerald-400" },
-                { l: "結案歸檔總額", v: stats.done.toLocaleString(), c: "text-white" }
+                { l: "歸檔資產總量", v: stats.done.toLocaleString(), c: "text-white" }
               ].map((s, i) => (
                 <div key={i} className="bento-card p-6 text-center">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{s.l}</span>
@@ -210,24 +206,17 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* --- 視圖 C: VANS 安全稽核 --- */}
         {activeTab === "vans" && (
           <div className="space-y-6 mt-8 animate-in slide-in-from-bottom-4">
             <div className="bento-card p-10 border-l-4 border-l-blue-600 flex flex-col md:flex-row justify-between items-center gap-6">
-              <div><h2 className="text-2xl font-bold text-white tracking-tight">VANS 物理對沖</h2><p className="text-xs text-slate-500 mt-2 tracking-wide">匯入 vans全用戶.csv 執行全網對沖與資安軌跡存檔。</p></div>
+              <div><h2 className="text-2xl font-bold text-white tracking-tight">VANS 物理對沖</h2><p className="text-xs text-slate-500 mt-2 tracking-wide">匯入 vans全用戶.csv 執行全網對沖與資安稽核軌跡存檔。</p></div>
               <div className="flex gap-4">
-                {/* 🚀 物理修復 Axe 報警：補齊 id, title 與 aria-label，確保無障礙通過 */}
                 <input 
-                  id="v200-vans-input"
-                  title="選擇 VANS CSV 檔案進行上傳"
-                  type="file" 
-                  accept=".csv" 
-                  ref={vansInputRef} 
-                  onChange={handleVansUpload} 
-                  className="hidden" 
-                  aria-label="VANS CSV 上傳"
+                  id="v200-vans-uploader"
+                  title="選擇 VANS CSV 檔案"
+                  type="file" accept=".csv" ref={vansInputRef} onChange={handleVansUpload} className="hidden" aria-label="上傳 VANS CSV" 
                 />
-                <button onClick={() => vansInputRef.current?.click()} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 active:scale-95 transition-all">注入 CSV</button>
+                <button onClick={() => vansInputRef.current?.click()} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-all shadow-xl">注入 CSV 數據</button>
                 {vansData.length > 0 && (
                   <button onClick={handleSaveAudit} disabled={isSaving} className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-blue-900/40">
                     {isSaving ? '處理中...' : '物理存入資料庫'}
@@ -239,7 +228,7 @@ export default function AdminDashboard() {
             {vansData.length > 0 && (
               <div className="bento-card overflow-hidden">
                 <table className="w-full text-left user-table font-mono">
-                  <thead><tr>{["類型", "核定 IP", "VANS 識別", "說明"].map(h => <th key={h}>{h}</th>)}</tr></thead>
+                  <thead><tr>{["衝突類型", "核定 IP", "VANS 識別名稱", "判定說明"].map(h => <th key={h}>{h}</th>)}</tr></thead>
                   <tbody>{vansConflicts.map((c, i) => (
                     <tr key={i} className="hover:bg-white/5 transition-colors text-xs">
                       <td><span className={`px-3 py-1 rounded-full text-[9px] font-black ${c.type==='MAC_ERROR'?'bg-red-500/10 text-red-400':'bg-amber-500/10 text-amber-400'}`}>{c.type}</span></td>
@@ -254,42 +243,22 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* --- 旗艦級底部導航 (物理佈局) --- */}
+        {/* --- 旗艦級底部導航 --- */}
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] bg-slate-900/90 backdrop-blur-3xl p-2 rounded-2xl border border-white/10 flex gap-1 shadow-2xl">
           {[
-            { id: "dashboard", l: "行政總覽" }, 
-            { id: "history", l: "資產歸檔庫" }, 
-            { id: "vans", l: "VANS 稽核" }, 
-            { id: "users", l: "權限矩陣" }
+            { id: "dashboard", l: "行政總覽" }, { id: "history", l: "資產歸檔庫" }, { id: "vans", l: "VANS 稽核" }, { id: "users", l: "權限矩陣" }
           ].map(b => (
-            <button 
-              key={b.id} 
-              onClick={() => setActiveTab(b.id as any)} 
-              className={`px-8 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${activeTab === b.id ? "bg-white text-slate-950 shadow-lg" : "text-slate-500 hover:text-white"}`}
-            >
-              {b.l}
-            </button>
+            <button key={b.id} onClick={() => setActiveTab(b.id as any)} className={`px-8 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${activeTab === b.id ? "bg-white text-slate-950 shadow-lg" : "text-slate-500 hover:text-white"}`}>{b.l}</button>
           ))}
         </div>
       </main>
 
-      {/* --- 全域強同步遮罩 --- */}
       {(isLoading || isSaving) && (
         <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-black/60 backdrop-blur-xl">
-          <div className="w-10 h-10 border-2 border-slate-800 border-t-blue-500 rounded-full animate-spin mb-4 shadow-blue-500/20"></div>
-          <p className="text-blue-500 font-black tracking-widest text-[9px] uppercase animate-pulse">Syncing Matrix...</p>
+          <div className="w-10 h-10 border-2 border-slate-800 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+          <p className="text-blue-500 font-black tracking-widest text-[9px] uppercase animate-pulse">矩陣同步中...</p>
         </div>
       )}
-
-      {/* --- 物理通知氣泡 --- */}
-      <div className="fixed bottom-24 right-8 z-[4000] flex flex-col gap-3">
-        {toasts.map(t => (
-          <div key={t.id} className={`px-6 py-4 rounded-xl shadow-2xl font-bold text-xs animate-in slide-in-from-right-4 flex items-center gap-4 border border-white/10 text-white backdrop-blur-xl ${t.type === "success" ? "bg-blue-600/90" : "bg-red-600/90"}`}>
-            <span className="material-symbols-outlined text-lg">{t.type === 'success' ? 'done_all' : 'report'}</span>
-            <span className="tracking-wider">{t.msg}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

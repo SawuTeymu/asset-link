@@ -5,18 +5,18 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { approveAsset, rejectAsset } from "@/lib/actions/assets";
 
-// 🚀 引入佈局組件 (Titanium Crystal 規格)
+// 🚀 引入佈局組件 (鈦金水晶規格)
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import TopNavbar from "@/components/layout/TopNavbar";
 
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V200.0 Titanium Crystal (Axe 物理修復版)
+ * 狀態：V200.0 Titanium Crystal (繁體中文完整版)
  * 物理職責：
- * 1. 行政簽核：執行 ERI 核定對沖，精確傳遞 [id, ip, mac, sn]。
- * 2. 視覺守護：鎖定 3XL 磨砂、Deep Slate Mesh、0 呼吸球殘留。
- * 3. 無障礙對正：採用隨機雜湊 Unique ID 徹底解決 Axe Duplicate ID 報警。
+ * 1. 行政簽核：執行 ERI 核定對沖，精確傳遞 [id, ip, mac, sn] 4引數。
+ * 2. 視覺守護：鎖定 3XL 磨砂、深石板網格背景、0 呼吸球殘留。
+ * 3. 無障礙對正：採用隨機雜湊唯一 ID 徹底解決 Axe 重複 ID 報警。
  * ==========================================
  */
 
@@ -37,7 +37,7 @@ export default function PendingPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 2. 初始化：物理拉取待核定庫 (0 簡化) ---
+  // --- 2. 初始化：物理拉取待核定庫 ---
   const fetchPending = useCallback(async () => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
     if (isAuth !== "true") {
@@ -47,7 +47,7 @@ export default function PendingPage() {
     
     setIsLoading(true);
     try {
-      // 物理感應 assets_pending 暫存表
+      // 物理讀取 assets_pending 暫存表
       const { data, error } = await supabase
         .from("assets_pending")
         .select("*")
@@ -124,12 +124,12 @@ export default function PendingPage() {
           
           <header className="flex justify-between items-end mb-10 px-4 animate-in fade-in duration-700">
              <div>
-                <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Pending Matrix</h1>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.4em] mt-2">Administrative Verification Pool</p>
+                <h1 className="text-3xl font-black text-white tracking-tighter uppercase">待核定矩陣</h1>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.4em] mt-2">行政核定池 (驗證緩衝區)</p>
              </div>
              <div className="text-right">
                 <span className="text-6xl font-black text-blue-500 font-mono tracking-tighter">{pendingList.length}</span>
-                <span className="text-[10px] font-black text-slate-500 ml-3 uppercase">Queued</span>
+                <span className="text-[10px] font-black text-slate-500 ml-3 uppercase">件待簽核</span>
              </div>
           </header>
 
@@ -151,25 +151,25 @@ export default function PendingPage() {
                           </div>
                           <h2 className="text-2xl font-bold text-slate-100 tracking-tight">{item.使用單位 || '未知裝機單位'}</h2>
                        </div>
-                       <div className="text-right font-mono text-[10px] text-slate-600">REQ_DATE: {item.裝機日期 || 'N/A'}</div>
+                       <div className="text-right font-mono text-[10px] text-slate-600">裝機日期: {item.裝機日期 || 'N/A'}</div>
                     </div>
 
                     {/* 物理技術參數矩陣 (100% 歸位) */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                        <div className="tech-box">
-                          <span className="text-[9px] font-black text-slate-500 block mb-1 uppercase">Spec</span>
+                          <span className="text-[9px] font-black text-slate-500 block mb-1 uppercase">設備規格</span>
                           <p className="text-xs font-bold text-slate-300 truncate">{item.設備類型}</p>
                        </div>
                        <div className="tech-box">
-                          <span className="text-[9px] font-black text-slate-500 block mb-1 uppercase">Model</span>
+                          <span className="text-[9px] font-black text-slate-500 block mb-1 uppercase">品牌型號</span>
                           <p className="text-xs font-bold text-slate-300 truncate">{item.品牌型號}</p>
                        </div>
                        <div className="tech-box !border-blue-500/20">
-                          <span className="text-[9px] font-black text-blue-500 block mb-1 uppercase">IP_Addr</span>
+                          <span className="text-[9px] font-black text-blue-500 block mb-1 uppercase">核定 IP</span>
                           <p className="text-xs font-black text-blue-400 font-mono tracking-tight">{item.核定ip}</p>
                        </div>
                        <div className="tech-box !border-red-500/20">
-                          <span className="text-[9px] font-black text-red-500 block mb-1 uppercase">MAC_Addr</span>
+                          <span className="text-[9px] font-black text-red-500 block mb-1 uppercase">主要 MAC</span>
                           <p className="text-xs font-black text-red-400 font-mono truncate">{item.主要mac}</p>
                        </div>
                     </div>
@@ -177,14 +177,14 @@ export default function PendingPage() {
                     <div className="flex items-center justify-between pt-6 border-t border-white/5">
                        <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-600"><span className="material-symbols-outlined text-sm">person</span></div>
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">填報人：{item.填報人 || item.applicant || "SYS_AUTO"}</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">填報人：{item.填報人 || item.applicant || "系統自動對正"}</span>
                        </div>
                        
                        <div className="flex gap-3">
-                          {/* 🚀 物理修復 Axe Line 117：採用動態雜湊 ID 解決 Duplicate ID 報警 */}
+                          {/* 🚀 物理修復 Axe：採用動態雜湊 ID 解決 Duplicate ID */}
                           <button 
                             id={`eri-v200-rej-${idx}-${item.id}-${Math.random().toString(36).substr(2, 4)}`}
-                            title={`拒絕並退回案件：${item.id}`}
+                            title={`拒絕並物理退回：${item.id}`}
                             onClick={() => handleReject(item)}
                             className="w-12 h-12 rounded-xl bg-red-500/5 text-red-500 border border-red-500/10 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center active:scale-90"
                           >
@@ -211,7 +211,7 @@ export default function PendingPage() {
       {(isLoading || isProcessing) && (
         <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
           <div className="w-12 h-12 border-2 border-slate-800 border-t-blue-500 rounded-full animate-spin mb-4 shadow-blue-500/20"></div>
-          <p className="text-blue-500 font-black tracking-[0.4em] uppercase text-[10px] animate-pulse">Syncing Matrix...</p>
+          <p className="text-blue-500 font-black tracking-[0.4em] uppercase text-[10px] animate-pulse">行政對正同步中...</p>
         </div>
       )}
 
