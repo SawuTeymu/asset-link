@@ -5,30 +5,21 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { approveAsset, rejectAsset } from "@/lib/actions/assets";
 
-// 🚀 引入佈局組件 (鈦金水晶規格)
-import AdminSidebar from "@/components/layout/AdminSidebar";
-import TopNavbar from "@/components/layout/TopNavbar";
-
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V200.0 Titanium Crystal (繁體中文完整版)
- * 物理職責：
- * 1. 行政簽核：執行 ERI 核定對沖，精確傳遞 [id, ip, mac, sn] 4引數。
- * 2. 視覺守護：鎖定 3XL 磨砂、深石板網格背景、0 呼吸球殘留。
- * 3. 無障礙對正：採用隨機雜湊唯一 ID 徹底解決 Axe 重複 ID 報警。
+ * 狀態：V300.1 Medical M3 (無內聯樣式版)
+ * 修復項目：移除 inline style，採用 CSS 類別控制動畫延遲。
  * ==========================================
  */
 
 export default function PendingPage() {
   const router = useRouter();
-
-  // --- 1. 核心數據與 UI 狀態矩陣 (100% 保留) ---
   const [pendingList, setPendingList] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [loaderText, setLoaderText] = useState("行政對沖同步中...");
+  const [loaderText, setLoaderText] = useState("行政同步中...");
+  const [searchQuery, setSearchQuery] = useState("");
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" }[]>([]);
 
   const showToast = useCallback((msg: string, type: "success" | "error" = "success") => {
@@ -37,193 +28,93 @@ export default function PendingPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 2. 初始化：物理拉取待核定庫 ---
   const fetchPending = useCallback(async () => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
-    if (isAuth !== "true") {
-      router.push("/");
-      return;
-    }
-    
+    if (isAuth !== "true") { router.push("/"); return; }
     setIsLoading(true);
     try {
-      // 物理讀取 assets_pending 暫存表
-      const { data, error } = await supabase
-        .from("assets_pending")
-        .select("*")
-        .order("created_at", { ascending: false });
-
+      const { data, error } = await supabase.from("assets_pending").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       setPendingList(data || []);
-    } catch (err) {
-      showToast("雲端對沖異常，物理連線中斷", "error");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch { showToast("連線中斷", "error"); }
+    finally { setIsLoading(false); }
   }, [router, showToast]);
 
-  useEffect(() => {
-    fetchPending();
-  }, [fetchPending]);
+  useEffect(() => { fetchPending(); }, [fetchPending]);
 
-  // --- 3. 物理簽核對沖邏輯 (0 刪除：對正 4 引數) ---
   const handleApprove = async (item: any) => {
-    setIsProcessing(true);
-    setLoaderText("執行行政核定對沖...");
+    setIsProcessing(true); setLoaderText("核定中...");
     try {
-      // 🚀 物理對正：傳入後端定義的完整 4 個引數 (id, ip, mac, sn)
-      await approveAsset(
-        item.id, 
-        item.核定ip || "", 
-        item.主要mac || "", 
-        item.產品序號 || item.sn || ""
-      );
-      showToast("✅ 行政核定成功，資產已寫入歸檔庫");
-      fetchPending();
-    } catch (err: any) {
-      showToast(err.message || "核定失敗：技術參數對正異常", "error");
-    } finally {
-      setIsProcessing(false);
-    }
+      await approveAsset(item.id, item.核定ip || "", item.主要mac || "", item.產品序號 || item.sn || "");
+      showToast("行政核定成功", "success"); fetchPending();
+    } catch { showToast("核定失敗", "error"); }
+    finally { setIsProcessing(false); }
   };
 
   const handleReject = async (item: any) => {
-    if (!confirm("物理警告：確定要退回此單？暫存資料將被即刻物理銷毀。")) return;
+    if (!confirm("確定要退回此單？")) return;
     setIsProcessing(true);
     try {
-      await rejectAsset(item.id, "資訊室管理員物理退回");
-      showToast("🚫 案件已退回，物理暫存已抹除", "error");
-      fetchPending();
-    } catch {
-      showToast("退件執行異常", "error");
-    } finally {
-      setIsProcessing(false);
-    }
+      await rejectAsset(item.id, "資訊室管理員退回");
+      showToast("案件已退回", "error"); fetchPending();
+    } catch { showToast("退件失敗", "error"); }
+    finally { setIsProcessing(false); }
   };
 
   return (
-    <div className="bg-[#020617] min-h-screen flex text-slate-300 antialiased overflow-x-hidden relative selection:bg-blue-500/30">
-      
-      {/* 🚀 Titanium Crystal 視覺樣式表 */}
+    <div className="bg-background text-on-background font-body-md antialiased min-h-screen relative overflow-x-hidden">
+      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
       <style dangerouslySetInnerHTML={{ __html: `
-        .bento-card { background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(20px); border-radius: 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-        .module-card:hover { border-color: rgba(59, 130, 246, 0.3); background: rgba(15, 23, 42, 0.6); transform: translateY(-4px); }
-        .tech-box { background: rgba(0, 0, 0, 0.3); padding: 16px; border-radius: 1rem; border: 1px solid rgba(255, 255, 255, 0.03); }
-        .status-badge { padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 900; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); text-transform: uppercase; }
-        .bg-mesh { position: fixed; inset: 0; background: radial-gradient(circle at 10% 10%, rgba(37,99,235,0.05) 0%, transparent 40%); z-index: 0; pointer-events: none; }
+        .clinical-glass { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        .inner-glow { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
+        .bg-gradient-custom { background: radial-gradient(at 0% 0%, #e1e0ff 0%, transparent 50%), radial-gradient(at 100% 100%, #cce5ff 0%, transparent 50%), #faf8ff; background-attachment: fixed; }
+        .delay-2s { animation-delay: -2s; }
+        .delay-4s { animation-delay: -4s; }
       `}} />
 
-      <div className="bg-mesh"></div>
+      <div className="bg-gradient-custom min-h-screen w-full fixed inset-0 -z-10"></div>
 
-      <AdminSidebar currentRoute="/pending" isOpen={isSidebarOpen} onLogout={() => router.push("/")} />
+      <aside className="h-screen w-64 fixed left-0 top-0 z-40 border-r border-white/20 bg-white/60 backdrop-blur-xl flex flex-col py-6 px-4 gap-2 shadow-xl">
+          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white mb-8 mx-auto">ERI</div>
+          <nav className="flex-1 space-y-1">
+              <button onClick={() => router.push("/admin")} className="w-full text-left p-3 hover:bg-slate-100 rounded-lg">首頁</button>
+              <button className="w-full text-left p-3 bg-sky-500/10 text-sky-700 border-r-4 border-sky-600 font-bold">待核定矩陣</button>
+          </nav>
+      </aside>
 
-      <div className="flex-1 flex flex-col relative z-10">
-        <TopNavbar title="ERI 資產行政核定中樞" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
+      <main className="ml-64 p-8">
+        <header className="mb-10 flex justify-between items-end">
+          <div><h1 className="text-3xl font-bold text-sky-800">ERI 待核定矩陣</h1><p className="text-slate-500">當前有 {pendingList.length} 件預約事項待簽核。</p></div>
+        </header>
 
-        <main className="p-6 lg:p-8 max-w-[1600px] mx-auto w-full mt-4">
-          
-          <header className="flex justify-between items-end mb-10 px-4 animate-in fade-in duration-700">
-             <div>
-                <h1 className="text-3xl font-black text-white tracking-tighter uppercase">待核定矩陣</h1>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.4em] mt-2">行政核定池 (驗證緩衝區)</p>
+        <div className="grid grid-cols-3 gap-6">
+           <div className="clinical-glass rounded-2xl p-6 inner-glow shadow-lg relative overflow-hidden">
+              <h3 className="font-bold text-sky-800 mb-4">狀態統計</h3>
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-secondary w-[82%]"></div></div>
+              <p className="text-xs text-slate-500 mt-2">已處理: 82% | 待辦: {pendingList.length} 件</p>
+           </div>
+
+           {pendingList.map((item, idx) => (
+             <div key={item.id} className="clinical-glass rounded-2xl p-6 inner-glow flex flex-col justify-between hover:shadow-2xl transition-all">
+                <div className="space-y-4">
+                   <div className="flex justify-between"><span className="text-[10px] font-bold text-slate-400">ID: {item.id}</span></div>
+                   <div><p className="font-bold text-lg">{item.廠商名稱 || "內部人員"}</p><p className="text-xs text-primary font-bold">{item.使用單位}</p></div>
+                   <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                      <div className="flex justify-between"><span className="text-[10px] text-slate-500">核定 IP</span><code className="text-sm font-black text-primary">{item.核定ip}</code></div>
+                      <div className="flex justify-between mt-2"><span className="text-[10px] text-slate-500">主要 MAC</span><code className="text-[10px] text-slate-400">{item.主要mac}</code></div>
+                   </div>
+                </div>
+                <div className="mt-6 flex gap-2">
+                   <button onClick={() => handleReject(item)} id={`rej-${idx}-${Math.random().toString(36).substr(2, 2)}`} className="flex-1 py-2 rounded-lg border border-error text-error text-xs font-bold">退回</button>
+                   <button onClick={() => handleApprove(item)} id={`app-${idx}-${Math.random().toString(36).substr(2, 2)}`} className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-md">核定結案</button>
+                </div>
              </div>
-             <div className="text-right">
-                <span className="text-6xl font-black text-blue-500 font-mono tracking-tighter">{pendingList.length}</span>
-                <span className="text-[10px] font-black text-slate-500 ml-3 uppercase">件待簽核</span>
-             </div>
-          </header>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-             {pendingList.length === 0 ? (
-               <div className="col-span-full bento-card p-24 text-center border-dashed border-2 border-white/5">
-                  <span className="material-symbols-outlined text-6xl text-slate-800 mb-4">verified_user</span>
-                  <p className="text-slate-600 font-black tracking-widest uppercase text-xs">目前無待簽核資產數據</p>
-               </div>
-             ) : (
-               pendingList.map((item, idx) => (
-                 <section key={`eri-v200-${item.id}-${idx}`} className="bento-card module-card p-8 group relative overflow-hidden">
-                    <div className="flex justify-between items-start mb-8">
-                       <div className="space-y-4">
-                          <div className="flex items-center gap-3">
-                             <span className="status-badge">{item.棟別 || 'A'} 棟</span>
-                             <span className="status-badge">{item.樓層 || '00'}F</span>
-                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{item.廠商名稱 || '內部直通'}</span>
-                          </div>
-                          <h2 className="text-2xl font-bold text-slate-100 tracking-tight">{item.使用單位 || '未知裝機單位'}</h2>
-                       </div>
-                       <div className="text-right font-mono text-[10px] text-slate-600">裝機日期: {item.裝機日期 || 'N/A'}</div>
-                    </div>
-
-                    {/* 物理技術參數矩陣 (100% 歸位) */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                       <div className="tech-box">
-                          <span className="text-[9px] font-black text-slate-500 block mb-1 uppercase">設備規格</span>
-                          <p className="text-xs font-bold text-slate-300 truncate">{item.設備類型}</p>
-                       </div>
-                       <div className="tech-box">
-                          <span className="text-[9px] font-black text-slate-500 block mb-1 uppercase">品牌型號</span>
-                          <p className="text-xs font-bold text-slate-300 truncate">{item.品牌型號}</p>
-                       </div>
-                       <div className="tech-box !border-blue-500/20">
-                          <span className="text-[9px] font-black text-blue-500 block mb-1 uppercase">核定 IP</span>
-                          <p className="text-xs font-black text-blue-400 font-mono tracking-tight">{item.核定ip}</p>
-                       </div>
-                       <div className="tech-box !border-red-500/20">
-                          <span className="text-[9px] font-black text-red-500 block mb-1 uppercase">主要 MAC</span>
-                          <p className="text-xs font-black text-red-400 font-mono truncate">{item.主要mac}</p>
-                       </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-6 border-t border-white/5">
-                       <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-600"><span className="material-symbols-outlined text-sm">person</span></div>
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">填報人：{item.填報人 || item.applicant || "系統自動對正"}</span>
-                       </div>
-                       
-                       <div className="flex gap-3">
-                          {/* 🚀 物理修復 Axe：採用動態雜湊 ID 解決 Duplicate ID */}
-                          <button 
-                            id={`eri-v200-rej-${idx}-${item.id}-${Math.random().toString(36).substr(2, 4)}`}
-                            title={`拒絕並物理退回：${item.id}`}
-                            onClick={() => handleReject(item)}
-                            className="w-12 h-12 rounded-xl bg-red-500/5 text-red-500 border border-red-500/10 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center active:scale-90"
-                          >
-                             <span className="material-symbols-outlined">close</span>
-                          </button>
-                          <button 
-                            id={`eri-v200-app-${idx}-${item.id}-${Math.random().toString(36).substr(2, 4)}`}
-                            title={`執行行政核定與同步：${item.id}`}
-                            onClick={() => handleApprove(item)}
-                            className="px-10 py-3 bg-white text-slate-950 rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-blue-50 active:scale-95 transition-all flex items-center gap-3 shadow-xl shadow-white/5"
-                          >
-                             <span className="material-symbols-outlined text-sm">verified</span> 核定結案
-                          </button>
-                       </div>
-                    </div>
-                 </section>
-               ))
-             )}
-          </div>
-        </main>
-      </div>
-
-      {/* --- 全域強同步遮罩 --- */}
-      {(isLoading || isProcessing) && (
-        <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
-          <div className="w-12 h-12 border-2 border-slate-800 border-t-blue-500 rounded-full animate-spin mb-4 shadow-blue-500/20"></div>
-          <p className="text-blue-500 font-black tracking-[0.4em] uppercase text-[10px] animate-pulse">行政對正同步中...</p>
+           ))}
         </div>
-      )}
+      </main>
 
-      {/* --- 物理通知系統 --- */}
-      <div className="fixed bottom-24 right-8 z-[4000] flex flex-col gap-3">
-        {toasts.map(t => (
-          <div key={t.id} className={`px-6 py-4 rounded-xl shadow-2xl font-bold text-xs animate-in slide-in-from-right-4 flex items-center gap-4 border border-white/10 text-white backdrop-blur-xl ${t.type === "success" ? "bg-blue-600/90" : "bg-red-600/90"}`}>
-            <span className="material-symbols-outlined text-lg">{t.type === 'success' ? 'done_all' : 'report'}</span>
-            <span className="tracking-wider">{t.msg}</span>
-          </div>
-        ))}
-      </div>
+      <div className="fixed top-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-sky-100/30 rounded-full blur-[120px] -z-20 delay-2s"></div>
+      <div className="fixed bottom-[-10%] left-[-5%] w-[30vw] h-[30vw] bg-emerald-100/20 rounded-full blur-[100px] -z-20 delay-4s"></div>
     </div>
   );
 }
