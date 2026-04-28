@@ -8,8 +8,11 @@ import { ADMIN_CREDENTIALS_LIST } from "@/lib/constants";
 /**
  * ==========================================
  * 檔案：src/app/page.tsx
- * 狀態：V300.1 Medical M3 (無內聯樣式版)
- * 修復項目：移除 inline style，將動畫延遲移至 CSS 類別。
+ * 狀態：V300.3 Deep Titanium (空間釋放寬敞版)
+ * 物理職責：
+ * 1. 視覺優化：擴張容器至 1200px，增加留白，消除擁擠感。
+ * 2. 邏輯 0 刪除：保留所有登入分流、身分驗證、廠商狀態攔截。
+ * 3. 物理脫離：維持內聯樣式淨空，確保編譯全綠。
  * ==========================================
  */
 
@@ -21,6 +24,7 @@ interface VendorDbRow {
 export default function LoginPage() {
   const router = useRouter();
   
+  // --- 1. 核心邏輯狀態 (100% 完整保留) ---
   const [loginType, setLoginType] = useState<"admin" | "vendor" | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -29,6 +33,7 @@ export default function LoginPage() {
   const [vendors, setVendors] = useState<{name: string, status: string}[]>([]);
   const [selectedVendor, setSelectedVendor] = useState("");
 
+  // --- 2. 初始化：廠商清單與狀態對沖 (100% 保留) ---
   useEffect(() => {
     const fetchVendors = async () => {
       try {
@@ -44,16 +49,17 @@ export default function LoginPage() {
         }));
         setVendors(mappedData);
       } catch (err) { 
-        console.error("物理同步失敗:", err); 
+        console.error("物理連線異常:", err); 
       }
     };
     fetchVendors();
   }, []);
 
+  // --- 3. 管理端登入對沖 (100% 完整保留) ---
   const handleAdminLogin = () => {
     setErrorMsg("");
     if (!adminAccount.trim() || !adminPassword.trim()) { 
-      setErrorMsg("物理權限缺失：請輸入帳號與密碼"); 
+      setErrorMsg("物理權限缺失：請輸入完整帳號與密碼"); 
       return; 
     }
     setIsLoading(true);
@@ -68,11 +74,13 @@ export default function LoginPage() {
     }
   };
 
+  // --- 4. 廠商端登入對沖 (100% 完整保留) ---
   const handleVendorLogin = () => {
     if (!selectedVendor) return;
     const vData = vendors.find(v => v.name === selectedVendor);
+    // 物理狀態攔截引擎
     if (vData?.status === '停權' || vData?.status === '停用') { 
-      setErrorMsg("⚠️ 帳號已被物理封鎖，請聯繫管理員。"); 
+      setErrorMsg("⚠️ 帳號已被物理封鎖，請聯繫系統管理員。"); 
       return; 
     }
     setIsLoading(true);
@@ -81,95 +89,211 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="bg-surface text-on-surface font-body-md overflow-hidden min-h-screen flex flex-col relative antialiased">
-      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
-      <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;600&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <div className="bg-[#020617] text-slate-300 font-body-md overflow-hidden min-h-screen flex flex-col relative antialiased selection:bg-blue-500/30">
       
-      <style dangerouslySetInnerHTML={{ __html: `
-        .glass-card { backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.3); }
-        .breathing-sphere { filter: blur(60px); opacity: 0.4; animation: breathe 8s infinite ease-in-out; }
-        .delay-2s { animation-delay: -2s; }
-        .delay-4s { animation-delay: -4s; }
-        @keyframes breathe {
-          0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.3; }
-          50% { transform: scale(1.2) translate(20px, -20px); opacity: 0.5; }
+      {/* 🚀 M3 Tailwind 全量配置 */}
+      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
+      <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;600&family=Material+Symbols+Outlined:wght@300;400;700&display=swap" rel="stylesheet" />
+      <script dangerouslySetInnerHTML={{ __html: `
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                "primary": "#3b82f6",
+                "on-primary": "#ffffff",
+                "primary-container": "#1e3a8a",
+                "on-primary-container": "#dbeafe",
+                "surface": "#0f172a",
+                "on-surface": "#f1f5f9",
+                "surface-variant": "#1e293b",
+                "on-surface-variant": "#94a3b8",
+                "outline": "#475569",
+                "error": "#ef4444",
+                "error-container": "#7f1d1d",
+                "on-error-container": "#fee2e2"
+              },
+              "fontFamily": {
+                "headline-md": ["Manrope"],
+                "body-md": ["Inter"]
+              }
+            }
+          }
         }
       `}} />
 
-      <div className="absolute inset-0 overflow-hidden -z-10 bg-[radial-gradient(circle_at_50%_50%,_#eaedff_0%,_#faf8ff_100%)]">
-        <div className="breathing-sphere absolute top-[-10%] left-[-5%] w-[500px] h-[500px] bg-primary-fixed-dim rounded-full"></div>
-        {/* 🚀 修復：使用 .delay-2s 類別取代 inline style */}
-        <div className="breathing-sphere absolute bottom-[-15%] right-[-5%] w-[600px] h-[600px] bg-secondary-fixed rounded-full delay-2s"></div>
-        {/* 🚀 修復：使用 .delay-4s 類別取代 inline style */}
-        <div className="breathing-sphere absolute top-[20%] right-[15%] w-[300px] h-[300px] bg-tertiary-fixed-dim rounded-full delay-4s"></div>
+      {/* 🚀 物理樣式：消除擁擠感，增強毛玻璃通透度 */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .deep-glass {
+          backdrop-filter: blur(32px);
+          background: rgba(15, 23, 42, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.6);
+        }
+        .breathing-sphere {
+          filter: blur(100px);
+          opacity: 0.25;
+          animation: breathe 12s infinite ease-in-out;
+        }
+        .delay-2s { animation-delay: -2s; }
+        .delay-4s { animation-delay: -4s; }
+        .icon-fill { font-variation-settings: 'FILL' 1; }
+        @keyframes breathe {
+          0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.2; }
+          50% { transform: scale(1.1) translate(40px, -40px); opacity: 0.35; }
+        }
+        .medical-gradient-dark {
+          background: radial-gradient(circle at top left, #0f172a 0%, #020617 100%);
+        }
+      `}} />
+
+      {/* --- 背景發光球體 (推向邊緣以釋放中心空間) --- */}
+      <div className="absolute inset-0 overflow-hidden -z-10 medical-gradient-dark">
+        <div className="breathing-sphere absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-blue-600 rounded-full"></div>
+        <div className="breathing-sphere absolute bottom-[-20%] right-[-10%] w-[800px] h-[800px] bg-emerald-600 rounded-full delay-2s"></div>
+        <div className="breathing-sphere absolute top-[30%] right-[20%] w-[500px] h-[500px] bg-indigo-600 rounded-full delay-4s"></div>
       </div>
 
-      <main className="flex-grow flex items-center justify-center p-6 relative z-10">
-        <div className="glass-card w-full max-w-[900px] rounded-xl shadow-xl overflow-hidden flex flex-col md:flex-row min-h-[560px]">
-          <div className="w-full md:w-5/12 p-10 flex flex-col justify-between bg-primary-container text-on-primary-container relative overflow-hidden">
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-8">
-                <span className="material-symbols-outlined text-[40px]">hub</span>
-                <h1 className="font-headline-md text-headline-md tracking-tight">資產聯網 Asset-Link</h1>
+      {/* --- 寬敞版主要登入畫布 --- */}
+      <main className="flex-grow flex items-center justify-center p-4 sm:p-8 relative z-10">
+        <div className="deep-glass w-full max-w-[1200px] rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row min-h-[650px] animate-in zoom-in-95 duration-1000">
+          
+          {/* --- 品牌區塊 (加大 Padding 釋放空間) --- */}
+          <div className="w-full md:w-1/2 p-12 lg:p-20 flex flex-col justify-between bg-gradient-to-br from-blue-900/80 to-slate-900/90 relative overflow-hidden">
+            <div className="relative z-10 mt-4">
+              <div className="flex items-center gap-5 mb-12">
+                <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-900/50 border border-white/10">
+                   <span className="material-symbols-outlined text-white text-4xl icon-fill">hub</span>
+                </div>
+                <h1 className="font-headline-md text-3xl lg:text-4xl font-black text-white tracking-tighter">資產聯網<br/>Asset-Link</h1>
               </div>
-              <h2 className="font-headline-sm text-headline-sm mb-4">醫療設備與資產管理一站式平台</h2>
-              <p className="font-body-md text-body-md opacity-90 leading-relaxed">提供精確的資產監測、維修預約與合規管理，確保醫療服務不中斷。</p>
+              <h2 className="text-2xl font-bold text-white mb-6 leading-tight">醫療設備維運與<br/>資產結案中樞</h2>
+              <p className="text-base text-blue-100/70 leading-relaxed font-medium max-w-sm">
+                物理對沖與資安稽核一站式平台，確保全院醫療數據鏈結之完整性與合規。
+              </p>
             </div>
-            <div className="absolute inset-0 opacity-20 pointer-events-none">
-              <img alt="Clinical IT" className="w-full h-full object-cover grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBUm3hItJ5QqXUWmrbdy-L2JotITHnHayPR1lHnH7VzGR4IMQGq16Nu_vuqe-DHSW79g-Xz4wIwS8_fUaWxrEYBIzpyhRR1bAgBMAcjqGImue3jmXaOUDwQzF2MBHBVQY_GAfdGtJFRM6hM3AtRr2Sk8vPBMO11fUHjzKclb0f4DisIcDj42tP-aa3JzIfWbGvLcIWdUxT0dbh_pHB9d74DombvpUJYHlso-KNTqERxTip0wBIYQ6XXvMk13J8PA21EESJO6aI4D4Q" />
+
+            <div className="relative z-10 mb-4 mt-16">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="material-symbols-outlined text-blue-400 text-base">verified_user</span>
+                <span className="text-xs font-black text-blue-300 uppercase tracking-[0.3em]">Hospital Enterprise</span>
+              </div>
+              <div className="h-1.5 w-20 bg-blue-400/50 rounded-full overflow-hidden">
+                <div className="h-full w-1/2 bg-blue-400 rounded-full"></div>
+              </div>
+            </div>
+
+            {/* 物理裝飾背景 */}
+            <div className="absolute inset-0 opacity-10 pointer-events-none mix-blend-overlay">
+              <img alt="Medical IT" className="w-full h-full object-cover grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBUm3hItJ5QqXUWmrbdy-L2JotITHnHayPR1lHnH7VzGR4IMQGq16Nu_vuqe-DHSW79g-Xz4wIwS8_fUaWxrEYBIzpyhRR1bAgBMAcjqGImue3jmXaOUDwQzF2MBHBVQY_GAfdGtJFRM6hM3AtRr2Sk8vPBMO11fUHjzKclb0f4DisIcDj42tP-aa3JzIfWbGvLcIWdUxT0dbh_pHB9d74DombvpUJYHlso-KNTqERxTip0wBIYQ6XXvMk13J8PA21EESJO6aI4D4Q" />
             </div>
           </div>
 
-          <div className="w-full md:w-7/12 p-10 flex flex-col justify-center bg-white/40">
+          {/* --- 操作區塊 (大幅提升留白，對稱 1/2 佈局) --- */}
+          <div className="w-full md:w-1/2 p-12 lg:p-20 flex flex-col justify-center bg-[#0f172a]/60">
+            
+            {/* 錯誤反饋氣泡 */}
             {errorMsg && (
-              <div className="mb-6 p-4 bg-error-container text-error border border-error/20 rounded-lg text-label-sm font-bold flex items-center gap-3 animate-in slide-in-from-top-2">
-                <span className="material-symbols-outlined text-sm">report</span> {errorMsg}
+              <div className="mb-8 p-5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-2xl text-sm font-bold flex items-center gap-4 animate-in slide-in-from-top-4 shadow-lg shadow-red-900/20">
+                <span className="material-symbols-outlined text-xl">report</span> {errorMsg}
               </div>
             )}
 
             {!loginType ? (
-              <div className="space-y-6">
-                <div className="mb-10 text-center md:text-left">
-                  <h3 className="font-headline-md text-headline-md text-on-surface mb-2">歡迎使用</h3>
-                  <p className="text-on-surface-variant font-body-md">請選擇您的使用者類型以開始作業</p>
+              <div className="animate-in fade-in duration-700 w-full max-w-md mx-auto">
+                <div className="mb-14 text-center md:text-left">
+                  <h3 className="text-4xl font-black text-white mb-4 tracking-tighter">系統登入</h3>
+                  <p className="text-slate-400 text-base">請物理選取您的權限類型以開始對沖</p>
                 </div>
-                <button onClick={() => setLoginType("vendor")} className="w-full group flex items-center p-6 rounded-lg border-2 border-transparent bg-white shadow-sm hover:border-primary hover:shadow-md transition-all duration-300 text-left">
-                  <div className="w-14 h-14 rounded-full bg-secondary-container flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
-                    <span className="material-symbols-outlined text-on-secondary-container text-2xl">calendar_add_on</span>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="font-headline-sm text-headline-sm text-on-surface">廠商預約申請</div>
-                    <div className="font-body-md text-body-md text-on-surface-variant">提交設備進場維護、展示或安裝申請</div>
-                  </div>
-                </button>
-                <button onClick={() => setLoginType("admin")} className="w-full group flex items-center p-6 rounded-lg border-2 border-transparent bg-white shadow-sm hover:border-primary hover:shadow-md transition-all duration-300 text-left">
-                  <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
-                    <span className="material-symbols-outlined text-on-primary-fixed text-2xl">admin_panel_settings</span>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="font-headline-sm text-headline-sm text-on-surface">資訊室管理者登入</div>
-                    <div className="font-body-md text-body-md text-on-surface-variant">院內人員管理介面、資產審核與系統監控</div>
-                  </div>
-                </button>
+                
+                <div className="space-y-6">
+                  {/* 路徑 A: 廠商端 */}
+                  <button onClick={() => setLoginType("vendor")} className="w-full group flex items-center p-6 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-blue-500/30 transition-all duration-300 text-left">
+                    <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
+                      <span className="material-symbols-outlined text-emerald-400 text-3xl icon-fill">calendar_add_on</span>
+                    </div>
+                    <div className="flex-grow">
+                      <div className="font-bold text-xl text-white mb-1">廠商預約錄入</div>
+                      <div className="text-sm text-slate-500">提交設備進場與裝機預約</div>
+                    </div>
+                    <span className="material-symbols-outlined text-slate-600 group-hover:text-blue-400 transition-colors ml-4">chevron_right</span>
+                  </button>
+
+                  {/* 路徑 B: 管理端 */}
+                  <button onClick={() => setLoginType("admin")} className="w-full group flex items-center p-6 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-blue-500/30 transition-all duration-300 text-left">
+                    <div className="w-16 h-16 rounded-2xl bg-blue-500/10 flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
+                      <span className="material-symbols-outlined text-blue-400 text-3xl icon-fill">admin_panel_settings</span>
+                    </div>
+                    <div className="flex-grow">
+                      <div className="font-bold text-xl text-white mb-1">資訊室管理者</div>
+                      <div className="text-sm text-slate-500">資產核定、稽核與系統日誌</div>
+                    </div>
+                    <span className="material-symbols-outlined text-slate-600 group-hover:text-blue-400 transition-colors ml-4">chevron_right</span>
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="animate-in fade-in">
-                <button onClick={() => { setLoginType(null); setErrorMsg(""); }} className="mb-6 flex items-center gap-2 text-label-sm text-outline hover:text-primary transition-colors font-bold uppercase tracking-widest">
-                  <span className="material-symbols-outlined text-sm">arrow_back</span> 返回
+              <div className="animate-in fade-in slide-in-from-right-4 duration-500 w-full max-w-md mx-auto">
+                <button onClick={() => { setLoginType(null); setErrorMsg(""); }} className="mb-12 flex items-center gap-2 text-sm font-black text-slate-500 hover:text-white transition-colors uppercase tracking-widest">
+                  <span className="material-symbols-outlined text-base">arrow_back</span>
+                  返回選單
                 </button>
+                
                 {loginType === "admin" ? (
-                  <div className="space-y-5">
-                    <input type="text" placeholder="Administrator ID" value={adminAccount} onChange={e => setAdminAccount(e.target.value)} className="w-full border border-outline-variant rounded-lg px-4 py-3 outline-none focus:ring-1 focus:ring-primary" />
-                    <input type="password" placeholder="Password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full border border-outline-variant rounded-lg px-4 py-3 outline-none focus:ring-1 focus:ring-primary" />
-                    <button onClick={handleAdminLogin} disabled={isLoading} className="w-full bg-primary text-white rounded-lg py-4 font-bold shadow-md hover:brightness-110 active:scale-95 transition-all">執行權限登入</button>
+                  <div className="space-y-8">
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-3 px-1">Administrator UID</label>
+                      <input 
+                        type="text" 
+                        placeholder="系統管理帳號" 
+                        value={adminAccount} 
+                        onChange={e => setAdminAccount(e.target.value)} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all text-lg" 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-3 px-1">Passphrase</label>
+                      <input 
+                        type="password" 
+                        placeholder="••••••••" 
+                        value={adminPassword} 
+                        onChange={e => setAdminPassword(e.target.value)} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 font-bold text-white tracking-[0.3em] placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all text-lg" 
+                      />
+                    </div>
+                    <button 
+                      onClick={handleAdminLogin} 
+                      disabled={isLoading}
+                      className="w-full bg-blue-600 text-white rounded-2xl py-6 mt-6 font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-blue-900/40 hover:bg-blue-500 active:scale-[0.98] transition-all disabled:opacity-50"
+                    >
+                      {isLoading ? "驗證同步中..." : "執行權限登入"}
+                    </button>
                   </div>
                 ) : (
-                  <div className="space-y-6">
-                    <select title="廠商選單" value={selectedVendor} onChange={e => setSelectedVendor(e.target.value)} className="w-full border border-outline-variant rounded-lg px-4 py-4 outline-none focus:ring-1 focus:ring-primary cursor-pointer appearance-none bg-white">
-                      <option value="" disabled>請選擇廠商名稱...</option>
-                      {vendors.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
-                    </select>
-                    <button onClick={handleVendorLogin} disabled={isLoading} className="w-full bg-primary text-white rounded-lg py-4 font-bold shadow-md hover:brightness-110 active:scale-95 transition-all">進入作業區</button>
+                  <div className="space-y-10">
+                    <div>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-4 px-1">Authorized Vendor Matrix</label>
+                      <div className="relative">
+                        <select 
+                          title="廠商物理選單"
+                          value={selectedVendor} 
+                          onChange={e => setSelectedVendor(e.target.value)} 
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 font-bold text-white appearance-none cursor-pointer focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all text-lg"
+                        >
+                          <option value="" disabled className="text-slate-500">請展開並選取您的廠商標記...</option>
+                          {vendors.map(v => <option key={v.name} value={v.name} className="bg-slate-900 text-white py-2">{v.name}</option>)}
+                        </select>
+                        <span className="material-symbols-outlined absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-2xl">expand_more</span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={handleVendorLogin} 
+                      disabled={isLoading || !selectedVendor}
+                      className="w-full bg-emerald-600 text-white rounded-2xl py-6 font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-emerald-900/40 hover:bg-emerald-500 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-30"
+                    >
+                      <span className="material-symbols-outlined text-xl icon-fill">verified</span>
+                      進入預約作業區
+                    </button>
                   </div>
                 )}
               </div>
@@ -178,14 +302,15 @@ export default function LoginPage() {
         </div>
       </main>
 
-      <footer className="p-8 w-full flex flex-col md:flex-row items-center justify-between font-label-sm text-label-sm text-on-surface-variant/60 relative z-10">
-        <div className="flex gap-6 mb-4 md:mb-0">
-          <a className="hover:text-primary transition-colors" href="#">隱私權規範</a>
-          <a className="hover:text-primary transition-colors" href="#">使用者服務條款</a>
+      {/* --- 頁尾資訊 --- */}
+      <footer className="px-10 py-8 w-full flex flex-col md:flex-row items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-widest relative z-10 border-t border-white/5">
+        <div className="flex gap-8 mb-4 md:mb-0">
+          <a className="hover:text-white transition-colors" href="#">Privacy Protocol</a>
+          <a className="hover:text-white transition-colors" href="#">Legal Compliance</a>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="bg-slate-200 px-2 py-1 rounded">M3.300.1-Stable</span>
-          <span>© 2026 Asset-Link IT Solutions.</span>
+        <div className="flex items-center gap-4">
+          <span className="bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 text-slate-300">Node M3.300.3-Stable</span>
+          <span className="opacity-50">© 2026 Asset-Link Medical IT.</span>
         </div>
       </footer>
     </div>
