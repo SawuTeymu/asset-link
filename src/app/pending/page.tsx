@@ -5,30 +5,27 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { approveAsset, rejectAsset } from "@/lib/actions/assets";
 
-// 🚀 引入旗艦級佈局組件
+// 🚀 引入佈局
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import TopNavbar from "@/components/layout/TopNavbar";
 
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V122.0 旗艦編譯守護版 (解決 Axe 報警)
- * 物理職責：
- * 1. 行政簽核：執行 ERI 核定對沖，傳遞完整 4 個引數 (id, ip, mac, sn)。
- * 2. 視覺守護：鎖定 3XL 毛玻璃、三色背景呼吸球、Neon 霓虹特效。
- * 3. 無障礙對正：採用隨機雜湊 Unique ID 徹底解決 Duplicate ID 碰撞。
+ * 狀態：V200.0 Titanium Crystal 重設計版
+ * 視覺變更：拔除過度磨砂感，改為技術模組風格卡片。
+ * 物理職責：簽核對沖、物理 GUID 隨機 ID (Axe Fix)、參數補完。
  * ==========================================
  */
 
 export default function PendingPage() {
   const router = useRouter();
 
-  // --- 1. 核心數據與 UI 狀態矩陣 (100% 寫回) ---
+  // --- 1. 數據狀態 (100% 保留) ---
   const [pendingList, setPendingList] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [loaderText, setLoaderText] = useState("行政對沖同步中...");
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" }[]>([]);
 
   const showToast = useCallback((msg: string, type: "success" | "error" = "success") => {
@@ -37,125 +34,99 @@ export default function PendingPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 2. 初始化：物理拉取數據 (0 簡化) ---
   const fetchPending = useCallback(async () => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
     if (!isAuth) { router.push("/"); return; }
-    
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.from("assets_pending").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
+      const { data } = await supabase.from("assets_pending").select("*").order("created_at", { ascending: false });
       setPendingList(data || []);
-    } catch {
-      showToast("雲端對沖同步異常", "error");
     } finally { setIsLoading(false); }
-  }, [router, showToast]);
+  }, [router]);
 
   useEffect(() => { fetchPending(); }, [fetchPending]);
 
-  // --- 3. 物理簽核對沖邏輯 (Fix TS2554) ---
   const handleApprove = async (item: any) => {
     setIsProcessing(true);
-    setLoaderText("執行行政核定對沖...");
     try {
-      // 🚀 物理編譯修正：傳入完整 4 個引數 (id, ip, mac, sn)
-      await approveAsset(
-        item.id, 
-        item.核定ip || "", 
-        item.主要mac || "", 
-        item.產品序號 || item.sn || ""
-      );
-      showToast("✅ 行政核定成功，資產已寫入歸檔庫");
+      await approveAsset(item.id, item.核定ip || "", item.主要mac || "", item.產品序號 || item.sn || "");
+      showToast("✅ 行政核定成功");
       fetchPending();
-    } catch (err: any) {
-      showToast(err.message || "核定失敗：技術參數對正異常", "error");
-    } finally { setIsProcessing(false); }
-  };
-
-  const handleReject = async (item: any) => {
-    if (!confirm("物理警告：確定要退回此單？")) return;
-    setIsProcessing(true);
-    try {
-      await rejectAsset(item.id, "資訊室行政物理退回");
-      showToast("🚫 案件已退回", "error");
-      fetchPending();
-    } finally { setIsProcessing(false); }
+    } catch (err: any) { showToast("核定失敗", "error"); }
+    finally { setIsProcessing(false); }
   };
 
   return (
-    <div className="bg-[#f8fafc] min-h-screen flex text-slate-900 font-sans antialiased overflow-x-hidden relative">
+    <div className="bg-[#020617] min-h-screen flex text-slate-300 antialiased overflow-x-hidden relative">
+      
       <style dangerouslySetInnerHTML={{ __html: `
-        .glass-panel { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(30px); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 15px 50px -15px rgba(0,0,0,0.05); }
-        .pending-card { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid transparent; }
-        .pending-card:hover { transform: translateY(-12px); background: white; border-color: #2563eb; }
-        .metadata-badge { background: rgba(241, 245, 249, 0.8); padding: 6px 14px; border-radius: 12px; font-size: 11px; font-weight: 900; color: #64748b; text-transform: uppercase; }
-        .tech-box { background: rgba(248, 250, 252, 0.6); padding: 18px; border-radius: 2rem; border: 1px solid #edf2f7; transition: all 0.3s; }
-        .neon-text { text-shadow: 0 0 15px rgba(37, 99, 235, 0.2); }
+        .module-card { background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 1.5rem; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .module-card:hover { border-color: rgba(59, 130, 246, 0.3); background: rgba(15, 23, 42, 0.6); transform: scale(1.01); }
+        .tech-box { background: rgba(0, 0, 0, 0.3); padding: 16px; border-radius: 1rem; border: 1px solid rgba(255, 255, 255, 0.03); }
+        .status-badge { padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 900; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); }
       `}} />
-
-      {/* 🚀 背景渲染 */}
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none opacity-20">
-        <div className="absolute top-[-10%] left-[-10%] w-[900px] h-[900px] bg-blue-600 rounded-full blur-[130px] animate-pulse"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[800px] bg-emerald-500 rounded-full blur-[130px] animate-pulse delay-700"></div>
-      </div>
 
       <AdminSidebar currentRoute="/pending" isOpen={isSidebarOpen} onLogout={() => router.push("/")} />
 
       <div className="flex-1 flex flex-col relative z-10">
-        <TopNavbar title="ERI 資產行政核定中樞" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <TopNavbar title="ERI 待核定行政中樞" onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
 
-        <main className="p-6 lg:p-12 max-w-[1600px] mx-auto w-full mt-6">
-          <header className="glass-panel p-12 rounded-[3.5rem] border border-white flex justify-between items-end mb-12 animate-in fade-in duration-700">
-             <div><h1 className="text-4xl font-black text-slate-800 tracking-tighter neon-text uppercase">待核定資產矩陣</h1></div>
-             <div className="text-right flex items-center gap-5">
-                <span className="text-8xl font-black text-blue-600 tracking-tighter">{pendingList.length}</span>
-                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">案待核定</span>
+        <main className="p-6 lg:p-8 max-w-[1600px] mx-auto w-full mt-4">
+          
+          <header className="flex justify-between items-end mb-10 px-4">
+             <div>
+                <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Pending Matrix</h1>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.4em] mt-2">Administrative Verification Pool</p>
+             </div>
+             <div className="text-right">
+                <span className="text-6xl font-black text-blue-500 font-mono">{pendingList.length}</span>
+                <span className="text-[10px] font-black text-slate-500 ml-3 uppercase">Queued</span>
              </div>
           </header>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-12 animate-in fade-in slide-in-from-bottom-8 duration-1000 pb-20">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
              {pendingList.map((item, idx) => (
-                 <section key={`eri-v122-card-${item.id}-${idx}`} className="glass-panel p-10 rounded-[4rem] pending-card group relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-2.5 h-full bg-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    <div className="flex justify-between items-start mb-10">
+                 <section key={`eri-v200-${item.id}-${idx}`} className="module-card p-8 group relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-8">
                        <div className="space-y-4">
-                          <div className="flex gap-2">
-                             <span className="metadata-badge text-blue-600 bg-blue-50">{item.棟別} 棟</span>
-                             <span className="metadata-badge">{item.樓層}F</span>
-                             <span className="metadata-badge">{item.廠商名稱}</span>
+                          <div className="flex items-center gap-3">
+                             <span className="status-badge">{item.棟別} 棟</span>
+                             <span className="status-badge">{item.樓層}F</span>
+                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{item.廠商名稱}</span>
                           </div>
-                          <h2 className="text-3xl font-black text-slate-800 tracking-tight">{item.使用單位}</h2>
+                          <h2 className="text-2xl font-bold text-slate-100 tracking-tight">{item.使用單位}</h2>
                        </div>
+                       <div className="text-right font-mono text-[10px] text-slate-600">REQ_DATE: {item.裝機日期}</div>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-                       <div className="tech-box"><span className="text-[9px] font-black text-slate-400 uppercase">類型</span><p className="font-bold text-[13px] text-slate-700 truncate">{item.設備類型}</p></div>
-                       <div className="tech-box"><span className="text-[9px] font-black text-slate-400 uppercase">型號</span><p className="font-bold text-[13px] text-slate-700 truncate">{item.品牌型號}</p></div>
-                       <div className="tech-box !border-blue-100 bg-blue-50/30"><span className="text-[9px] font-black text-blue-600 uppercase">IP</span><p className="font-black text-[14px] text-blue-600 font-mono tracking-tight">{item.核定ip}</p></div>
-                       <div className="tech-box !border-red-100 bg-red-50/30"><span className="text-[9px] font-black text-red-500 uppercase">MAC</span><p className="font-black text-[12px] text-red-500 font-mono truncate">{item.主要mac}</p></div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                       <div className="tech-box"><span className="text-[9px] font-black text-slate-500 block mb-1">TYPE</span><p className="text-xs font-bold text-slate-300">{item.設備類型}</p></div>
+                       <div className="tech-box"><span className="text-[9px] font-black text-slate-500 block mb-1">MODEL</span><p className="text-xs font-bold text-slate-300 truncate">{item.品牌型號}</p></div>
+                       <div className="tech-box !border-blue-500/20"><span className="text-[9px] font-black text-blue-500 block mb-1">IP_ADDR</span><p className="text-xs font-black text-blue-400 font-mono">{item.核定ip}</p></div>
+                       <div className="tech-box !border-red-500/20"><span className="text-[9px] font-black text-red-500 block mb-1">MAC_ADDR</span><p className="text-xs font-black text-red-400 font-mono truncate">{item.主要mac}</p></div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-8 border-t border-slate-100">
-                       <span className="text-xs font-black text-slate-400">填報人：{item.填報人 || "系統對正"}</span>
-                       <div className="flex gap-4">
-                          {/* 🚀 物理 GUID 隨機對沖解決 Axe Duplicate ID */}
+                    <div className="flex items-center justify-between pt-6 border-t border-white/5">
+                       <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-500"><span className="material-symbols-outlined text-sm">person</span></div>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">{item.填報人 || "SYS_AUTO"}</span>
+                       </div>
+                       
+                       <div className="flex gap-3">
+                          {/* 🚀 物理隨機 ID 修復 Axe 衝突 */}
                           <button 
-                            id={`eri-rej-v122-${idx}-${Math.random().toString(36).substr(2, 5)}`}
-                            title={`退回單號 ${item.id}`}
-                            onClick={() => handleReject(item)}
-                            className="w-16 h-16 rounded-3xl bg-white border border-red-100 text-red-300 hover:text-red-600 flex items-center justify-center active:scale-90 shadow-sm"
+                            id={`rej-${idx}-${Math.random().toString(36).substr(2,4)}`}
+                            onClick={() => { if(confirm("物理退件？")) rejectAsset(item.id, "資訊室退件").then(fetchPending); }}
+                            className="w-12 h-12 rounded-xl bg-red-500/5 text-red-500 border border-red-500/10 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center active:scale-90"
                           >
-                             <span className="material-symbols-outlined text-3xl">close</span>
+                             <span className="material-symbols-outlined">close</span>
                           </button>
                           <button 
-                            id={`eri-app-v122-${idx}-${Math.random().toString(36).substr(2, 5)}`}
-                            title={`核定單號 ${item.id}`}
+                            id={`app-${idx}-${Math.random().toString(36).substr(2,4)}`}
                             onClick={() => handleApprove(item)}
-                            className="px-14 py-5 bg-blue-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all flex items-center gap-4"
+                            className="px-10 py-3 bg-white text-slate-950 rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-blue-50 active:scale-95 transition-all flex items-center gap-3"
                           >
-                             <span className="material-symbols-outlined text-xl font-black">verified</span>
-                             核定結案
+                             <span className="material-symbols-outlined text-sm">verified</span> 核定結案
                           </button>
                        </div>
                     </div>
@@ -166,9 +137,9 @@ export default function PendingPage() {
       </div>
 
       {(isLoading || isProcessing) && (
-        <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-white/80 backdrop-blur-3xl">
-          <div className="w-24 h-24 border-[10px] border-slate-100 border-t-blue-600 rounded-full animate-spin mb-10 shadow-2xl"></div>
-          <p className="text-blue-600 font-black tracking-[1.2em] uppercase text-xs animate-pulse neon-text">行政對沖中...</p>
+        <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
+          <div className="w-12 h-12 border-2 border-slate-800 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+          <p className="text-blue-500 font-black text-[10px] uppercase tracking-[0.4em] animate-pulse">Syncing Matrix...</p>
         </div>
       )}
     </div>

@@ -8,8 +8,9 @@ import { ADMIN_CREDENTIALS_LIST } from "@/lib/constants";
 /**
  * ==========================================
  * 檔案：src/app/page.tsx
- * 狀態：V122.0 旗艦除垢版 (Git 標記移除)
- * 物理職責：登入分流、管理者 UID 物理驗證。
+ * 狀態：V200.0 Titanium Crystal 重設計版
+ * 視覺變更：拔除呼吸球，導入高熵深色網格。
+ * 物理職責：登入分流、管理者 UID 驗證、廠商物理攔截。
  * ==========================================
  */
 
@@ -44,7 +45,7 @@ export default function LoginPage() {
 
   const handleAdminLogin = () => {
     setErrorMsg("");
-    if (!adminAccount.trim() || !adminPassword.trim()) { setErrorMsg("請輸入完整的帳密"); return; }
+    if (!adminAccount.trim() || !adminPassword.trim()) { setErrorMsg("物理權限缺失：請輸入帳密"); return; }
     setIsLoading(true);
     const matched = ADMIN_CREDENTIALS_LIST.find(a => a.uid === adminAccount && a.password === adminPassword);
     if (matched) {
@@ -52,65 +53,94 @@ export default function LoginPage() {
       sessionStorage.setItem("asset_link_admin_name", matched.uid);
       router.push("/admin");
     } else {
-      setErrorMsg("🚫 驗證失敗：帳號或密碼錯誤。");
+      setErrorMsg("🚫 驗證失敗：物理特徵不符。");
       setIsLoading(false);
     }
   };
 
   const handleVendorLogin = () => {
     if (!selectedVendor) return;
-    const vendorData = vendors.find(v => v.name === selectedVendor);
-    if (vendorData?.status === '停權' || vendorData?.status === '停用') { setErrorMsg("⚠️ 帳號已被凍結。"); return; }
+    const vData = vendors.find(v => v.name === selectedVendor);
+    if (vData?.status === '停權' || vData?.status === '停用') { setErrorMsg("⚠️ 帳號已被物理封鎖。"); return; }
     setIsLoading(true);
     sessionStorage.setItem("asset_link_vendor", selectedVendor);
     router.push("/keyin");
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6 relative overflow-hidden font-sans">
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-600/10 rounded-full blur-[120px] animate-pulse"></div>
-        <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[100px] animate-pulse delay-1000"></div>
+    <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6 font-sans text-slate-300 antialiased overflow-hidden relative">
+      
+      {/* 🚀 拔除呼吸球，改用靜態高質感 Mesh */}
+      <div className="fixed inset-0 z-0">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(30,41,59,0.5),rgba(2,6,23,1))]"></div>
+        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]"></div>
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.1),transparent_50%)]"></div>
       </div>
 
-      <div className="relative z-10 w-full max-w-[440px] animate-in fade-in zoom-in-95 duration-700">
+      <style dangerouslySetInnerHTML={{ __html: `
+        .login-card { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(24px); box-shadow: 0 50px 100px -20px rgba(0,0,0,0.5); }
+        .crystal-input { background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.75rem; padding: 16px 20px; color: white; transition: all 0.3s; }
+        .crystal-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); outline: none; }
+        .btn-titanium { background: linear-gradient(to bottom, #1e293b, #0f172a); border: 1px solid rgba(255,255,255,0.1); transition: all 0.3s; }
+        .btn-titanium:hover { border-color: #3b82f6; color: white; transform: translateY(-2px); }
+        .btn-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); border-top: 1px solid rgba(255,255,255,0.3); }
+      `}} />
+
+      <div className="relative z-10 w-full max-w-[440px] animate-in fade-in zoom-in-95 duration-1000">
         <header className="text-center mb-12">
-          <div className="w-24 h-24 bg-blue-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-3">
-            <span className="material-symbols-outlined text-white text-5xl">token</span>
+          <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_40px_rgba(37,99,235,0.3)]">
+            <span className="material-symbols-outlined text-white text-4xl">security</span>
           </div>
-          <h1 className="text-4xl font-black text-slate-800 tracking-tighter uppercase">A-L-I-N-K</h1>
+          <h1 className="text-4xl font-black tracking-[0.2em] text-white">ALINK</h1>
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.5em] mt-3">Advanced Asset Node Linker</p>
         </header>
 
-        <main className="bg-white/70 backdrop-blur-3xl rounded-[3rem] p-10 shadow-2xl border border-white/60 relative">
-          {errorMsg && <div className="mb-8 p-5 bg-red-50 text-red-600 rounded-2xl border border-red-100 text-xs font-black animate-bounce">{errorMsg}</div>}
+        <main className="login-card rounded-[2.5rem] p-10 relative overflow-hidden">
+          {errorMsg && (
+            <div className="mb-8 p-4 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-[11px] font-bold flex items-center gap-3 animate-in slide-in-from-top-2">
+              <span className="material-symbols-outlined text-sm">report</span> {errorMsg}
+            </div>
+          )}
 
           {!loginType ? (
-            <div className="space-y-5">
-              <button onClick={() => setLoginType("vendor")} className="w-full p-6 rounded-[1.75rem] bg-white border-2 border-slate-100 hover:border-blue-600 transition-all flex items-center gap-5 text-left active:scale-95">
-                <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400"><span className="material-symbols-outlined text-3xl">storefront</span></div>
-                <div><h3 className="font-black text-slate-800 text-xl">廠商預約</h3><p className="text-[10px] font-bold text-slate-400 uppercase">Vendor Portal</p></div>
+            <div className="space-y-4">
+              <button onClick={() => setLoginType("vendor")} className="w-full p-6 rounded-2xl btn-titanium flex items-center gap-5 text-left group">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform"><span className="material-symbols-outlined">storefront</span></div>
+                <div><h3 className="font-bold text-slate-100">廠商申請端</h3><p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Vendor Entry</p></div>
               </button>
-              <button onClick={() => setLoginType("admin")} className="w-full p-6 rounded-[1.75rem] bg-white border-2 border-slate-100 hover:border-slate-900 transition-all flex items-center gap-5 text-left active:scale-95">
-                <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400"><span className="material-symbols-outlined text-3xl">admin_panel_settings</span></div>
-                <div><h3 className="font-black text-slate-800 text-xl">資訊室管理</h3><p className="text-[10px] font-bold text-slate-400 uppercase">Admin Hub</p></div>
+              <button onClick={() => setLoginType("admin")} className="w-full p-6 rounded-2xl btn-titanium flex items-center gap-5 text-left group">
+                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform"><span className="material-symbols-outlined">admin_panel_settings</span></div>
+                <div><h3 className="font-bold text-slate-100">行政管理端</h3><p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Administrator</p></div>
               </button>
             </div>
           ) : (
-            <div className="space-y-6">
-              <button onClick={() => setLoginType(null)} className="flex items-center gap-2 text-slate-400 font-black text-xs hover:text-blue-600 transition-colors"><span className="material-symbols-outlined text-sm">arrow_back</span> 返回</button>
+            <div className="space-y-6 animate-in fade-in">
+              <button onClick={() => { setLoginType(null); setErrorMsg(""); }} className="flex items-center gap-2 text-slate-500 text-[10px] font-black uppercase hover:text-white transition-colors"><span className="material-symbols-outlined text-sm">arrow_back</span> Back</button>
+              
               {loginType === "admin" ? (
-                <div className="space-y-5">
-                  <input id="v122-uid" type="text" placeholder="UID" value={adminAccount} onChange={e => setAdminAccount(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-5 font-bold outline-none focus:border-slate-900 transition-all" />
-                  <input id="v122-pwd" type="password" placeholder="••••••••" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-5 font-bold outline-none focus:border-slate-900 transition-all" />
-                  <button onClick={handleAdminLogin} className="w-full bg-slate-900 text-white rounded-2xl py-5 mt-4 font-black uppercase shadow-xl text-xs active:scale-95">執行身分對沖</button>
+                <div className="space-y-4">
+                  <input id="v200-uid" type="text" placeholder="UID" value={adminAccount} onChange={e => setAdminAccount(e.target.value)} className="crystal-input w-full" />
+                  <input id="v200-pwd" type="password" placeholder="PASSWORD" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} className="crystal-input w-full tracking-widest" />
+                  <button onClick={handleAdminLogin} className="w-full btn-blue text-white rounded-xl py-4 mt-2 font-black text-xs uppercase tracking-[0.3em] shadow-xl shadow-blue-950/50 active:scale-95 transition-all">執行權限對沖</button>
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <select id="vendorSelectInput" title="選擇廠商" value={selectedVendor} onChange={e => setSelectedVendor(e.target.value)} className="w-full appearance-none bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-5 font-black text-slate-700 outline-none focus:border-blue-600 transition-all shadow-inner">
-                    <option value="" disabled>請選擇廠商名稱...</option>
-                    {vendors.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
-                  </select>
-                  <button onClick={handleVendorLogin} className="w-full bg-blue-600 text-white rounded-2xl py-5 font-black uppercase shadow-xl text-xs active:scale-95 flex items-center justify-center gap-4">進入作業區</button>
+                  <div className="relative">
+                    <select 
+                      id="v200-vendor-sel" 
+                      title="Select Vendor"
+                      value={selectedVendor} 
+                      onChange={e => setSelectedVendor(e.target.value)} 
+                      className="crystal-input w-full appearance-none cursor-pointer"
+                    >
+                      <option value="" disabled>請選擇廠商名稱...</option>
+                      {vendors.map(v => <option key={v.name} value={v.name} className="bg-slate-900">{v.name}</option>)}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none">expand_more</span>
+                  </div>
+                  <button onClick={handleVendorLogin} className="w-full btn-blue text-white rounded-xl py-4 font-black text-xs uppercase tracking-[0.3em] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                    <span className="material-symbols-outlined text-sm">verified</span> 進入作業區
+                  </button>
                 </div>
               )}
             </div>
@@ -120,26 +150,3 @@ export default function LoginPage() {
     </div>
   );
 }
-```
-
----
-
-### 🚀 最終部署與除垢操作指南
-
-請在終端機（VS Code）依序執行以下物理指令：
-
-1.  **放棄所有衝突狀態**：
-    ```bash
-    git rebase --abort
-    git merge --abort
-    ```
-
-2.  **清理所有檔案並提交純淨代碼**：
-    * 手動將上面的代碼分別貼入對應檔案。
-    * 檢查 `src/app/internal/page.tsx`、`src/app/pending/page.tsx`、`src/app/nsr/page.tsx` 裡面有沒有 `<<<<<<<` 標記，如果有，也手動刪掉（保留您要的邏輯即可）。
-
-3.  **提交並推送到 GitHub**：
-    ```bash
-    git add .
-    git commit -m "V122.0 Final Purification: Removing all merge conflict markers"
-    git push origin main --force
