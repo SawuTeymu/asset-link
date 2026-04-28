@@ -1,4 +1,4 @@
-```react
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -165,6 +165,3 @@ export default function KeyinPage() {
     </div>
   );
 }
-
-
-```
