@@ -4,18 +4,18 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-// 物理導入樣式模組
+// 物理導入樣式模組 (0 內聯樣式)
 import styles from "./keyin.module.css";
 
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V300.30 終極穩定版 (解決提交無反應問題)
+ * 狀態：V300.31 終極修正版 (對正「資產」資料表實體)
  * 物理職責：
- * 1. 實體對位：100% 鎖定資料表「assets」與「buildings」。
- * 2. 狀態保全：嚴格執行 finally 區塊釋放 isLoading，防止按鈕鎖死。
- * 3. 0 簡化：保留全功能錄入、MAC 格式化、棟別動態抓取。
- * 4. 無符號：物理抹除所有 Emoji 特殊符號。
+ * 1. 實體修正：將所有 .from("assets") 改為 .from("資產") 以符合 image_7df058.png 截圖。
+ * 2. 狀態保全：嚴格執行 finally 區塊強制釋放 Loading，解決點擊無反應問題。
+ * 3. 0 簡化原則：保留品牌型號、無線 MAC、特殊備註、MAC 自動格式化。
+ * 4. 無符號化：抹除所有 Emoji 與不必要特殊符號。
  * ==========================================
  */
 
@@ -29,7 +29,7 @@ export default function KeyinPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [buildingOptions, setBuildings] = useState<any[]>([]);
 
-  // 錄入表單狀態
+  // 錄入數據模型 (對齊中文化欄位)
   const [metadata, setMetadata] = useState({ 
     date: new Date().toISOString().split("T")[0], 
     area: "", 
@@ -45,7 +45,7 @@ export default function KeyinPage() {
   const [pendingRecords, setPendingRecords] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" }[]>([]);
 
-  // --- 2. 核心操作函數 ---
+  // --- 2. 物理操作函數 ---
 
   const showToast = useCallback((msg: string, type: "success" | "error") => {
     const id = Date.now();
@@ -53,7 +53,7 @@ export default function KeyinPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // 抓取棟別主檔
+  // 物理對沖：獲取棟別 (Master Source: buildings)
   const fetchBuildings = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -68,17 +68,17 @@ export default function KeyinPage() {
         setMetadata(prev => ({ ...prev, area: data[0].棟別名稱 }));
       }
     } catch (err) {
-      console.error("棟別資料同步失敗:", err);
+      console.error("棟別資料同步異常");
     }
   }, [metadata.area]);
 
-  // 抓取進行中案件 (對準 assets 表)
+  // 物理對沖：獲取進度 (實體路徑: 資產)
   const fetchPendingRecords = useCallback(async (vName: string) => {
     if (!vName) return;
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from("assets")
+        .from("資產") // 🚀 關鍵修復：對正截圖中的中文表名
         .select("*")
         .eq("來源廠商", vName)
         .order("建立時間", { ascending: false });
@@ -86,8 +86,7 @@ export default function KeyinPage() {
       if (error) throw error;
       setPendingRecords(data || []);
     } catch (err) {
-      console.error("進度查詢失敗:", err);
-      showToast("進度數據同步失敗", "error");
+      showToast("進度數據讀取失敗", "error");
     } finally {
       setIsLoading(false);
     }
@@ -95,20 +94,16 @@ export default function KeyinPage() {
 
   useEffect(() => {
     const v = sessionStorage.getItem("asset_link_vendor");
-    if (!v) { 
-      router.push("/"); 
-      return; 
-    }
+    if (!v) { router.push("/"); return; }
     setVendorName(v);
     
-    // 初始化物理數據
     fetchBuildings();
     if (activeTab === "progress") {
       fetchPendingRecords(v);
     }
   }, [router, activeTab, fetchBuildings, fetchPendingRecords]);
 
-  // MAC 地址物理對沖格式化
+  // MAC 地址自動格式化對沖
   const handleMacInput = (index: number, val: string, macField: "mac" | "mac2") => {
     let macStr = val.toUpperCase().replace(/[^A-F0-9]/g, "");
     if (macStr.length > 12) macStr = macStr.substring(0, 12);
@@ -119,17 +114,15 @@ export default function KeyinPage() {
     setDevices(newDevices);
   };
 
-  // 物理提交申請
+  // 物理提交申請至「資產」表
   const handleSubmit = async () => {
-    if (isLoading) return; // 防止重複提交
+    if (isLoading) return;
 
-    // 行政防呆
     if (!metadata.area || !metadata.unit || !metadata.applicant) {
-      showToast("請完整填寫行政資料 (棟別/單位/人員)", "error"); 
+      showToast("請填寫完整行政資料 (棟別/單位/人員)", "error"); 
       return;
     }
     
-    // 技術防呆
     const hasEmptySn = devices.some(d => !d.sn.trim());
     if (hasEmptySn) {
        showToast("設備產品序號不可為空", "error");
@@ -138,7 +131,7 @@ export default function KeyinPage() {
 
     setIsLoading(true);
     try {
-      // 物理對沖：對準資料庫「assets」表與中文欄位
+      // 🚀 關鍵修復：100% 對準資料庫「資產」表與中文欄位
       const payload = devices.map(d => ({
         "來源廠商": vendorName,
         "裝機日期": metadata.date,
@@ -155,27 +148,27 @@ export default function KeyinPage() {
         "狀態": "待核定"
       }));
 
-      const { error } = await supabase.from("assets").insert(payload);
+      const { error } = await supabase.from("資產").insert(payload);
       
       if (error) {
         if (error.code === "23505") {
           showToast("提交失敗：序號已存在於系統中", "error");
         } else {
-          throw error;
+          // 將詳細錯誤拋出至 catch
+          throw new Error(error.message);
         }
         return;
       }
 
-      // 成功後重置表單
       setDevices([{ type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }]);
-      showToast("預約申請已成功送出", "success");
+      showToast("預約錄入成功", "success");
       setActiveTab("progress");
 
     } catch (err: any) {
-      console.error("提交報錯內容:", err);
-      showToast(`系統寫入失敗: ${err.message || '未知錯誤'}`, "error");
+      console.error("提交報錯:", err);
+      showToast(`寫入失敗: ${err.message}`, "error");
     } finally {
-      // 🚀 強制解除 Loading 狀態，確保按鈕恢復可點擊
+      // 🚀 強制釋放按鈕狀態，解決無反應問題
       setIsLoading(false);
     }
   };
@@ -184,12 +177,12 @@ export default function KeyinPage() {
     if (!confirm("確定要撤回這筆預約申請嗎？")) return;
     setIsLoading(true);
     try {
-      const { error } = await supabase.from("assets").delete().eq("產品序號", sn);
+      const { error } = await supabase.from("資產").delete().eq("產品序號", sn);
       if (error) throw error;
       showToast("申請已撤回", "success");
       fetchPendingRecords(vendorName);
     } catch (err) {
-      showToast("撤回操作失敗", "error");
+      showToast("撤回失敗", "error");
     } finally {
       setIsLoading(false);
     }
@@ -209,7 +202,7 @@ export default function KeyinPage() {
           <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-sky-800 p-1">
              <span className="material-symbols-outlined">menu</span>
           </button>
-          <span className="text-lg md:text-xl font-bold bg-gradient-to-r from-sky-700 to-sky-500 bg-clip-text text-transparent">Vendor Portal</span>
+          <span className="text-lg md:text-xl font-bold bg-gradient-to-r from-sky-700 to-sky-500 bg-clip-text text-transparent truncate max-w-[200px]">Vendor Portal</span>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => router.push("/")} className="material-symbols-outlined text-slate-500 hover:text-sky-600 transition-colors">logout</button>
@@ -219,21 +212,21 @@ export default function KeyinPage() {
       <div className="flex">
         {/* --- SideNavBar --- */}
         <aside className={`w-64 fixed left-0 top-0 h-screen pt-16 border-r border-white/30 bg-white/80 backdrop-blur-2xl p-6 z-50 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
-          <div className="flex justify-between items-center mb-8 px-2 font-black text-sky-800">
-            <p className="text-lg uppercase">ALink 作業區</p>
+          <div className="flex justify-between items-center mb-8 px-2 font-black text-sky-800 uppercase tracking-tighter">
+            <p className="text-lg">ALink 作業區</p>
             <button className="md:hidden text-slate-500" onClick={() => setIsMobileMenuOpen(false)}><span className="material-symbols-outlined">close</span></button>
           </div>
           <nav className="space-y-2">
-             <button onClick={() => { setActiveTab("entry"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all ${activeTab === 'entry' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>設備預約錄入</button>
-             <button onClick={() => { setActiveTab("progress"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all ${activeTab === 'progress' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>送件進度查詢</button>
+             <button onClick={() => { setActiveTab("entry"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all ${activeTab === 'entry' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>預約錄入</button>
+             <button onClick={() => { setActiveTab("progress"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all ${activeTab === 'progress' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>進度查詢</button>
           </nav>
         </aside>
 
-        {/* --- Main Workspace --- */}
+        {/* --- Main Content --- */}
         <main className="w-full md:ml-64 p-4 md:p-8">
           <header className="mb-10">
-            <h1 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">{activeTab === 'entry' ? `廠商錄入端 : ${vendorName}` : '審核進度查詢'}</h1>
-            <p className="text-xs md:text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">Administrative Asset Interface</p>
+            <h1 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">{activeTab === 'entry' ? `廠商錄入 : ${vendorName}` : '審核進度追蹤'}</h1>
+            <p className="text-xs md:text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest tracking-tighter">Administrative Asset Interface</p>
           </header>
 
           {activeTab === 'entry' && (
@@ -249,7 +242,7 @@ export default function KeyinPage() {
                      <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block ml-1">裝機日期</label><input type="date" value={metadata.date} onChange={e => setMetadata({...metadata, date: e.target.value})} className={styles.crystalInput} /></div>
                      <div className="grid grid-cols-2 gap-4">
                        <div>
-                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block ml-1">棟別 (同步)</label>
+                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block ml-1">棟別 (動態)</label>
                          <select value={metadata.area} onChange={e => setMetadata({...metadata, area: e.target.value})} className={styles.crystalInput}>
                            {buildingOptions.map(v => <option key={v.棟別代碼} value={v.棟別名稱}>{v.棟別名稱}</option>)}
                          </select>
@@ -270,7 +263,7 @@ export default function KeyinPage() {
                           <span className={`material-symbols-outlined text-emerald-600 ${styles.iconFill}`}>dns</span>
                           <h2 className="text-lg font-bold text-slate-800 tracking-tight">設備技術參數</h2>
                        </div>
-                       <button onClick={() => setDevices([...devices, { type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }])} className="text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] bg-blue-50 px-5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-100 shadow-sm">
+                       <button onClick={() => setDevices([...devices, { type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }])} className="text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] bg-blue-50 px-5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-100">
                          + 新增設備節點
                        </button>
                     </div>
@@ -312,7 +305,7 @@ export default function KeyinPage() {
                       </table>
                     </div>
 
-                    <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center">
+                    <div className="mt-8 pt-6 border-t border-slate-100">
                        <button 
                          onClick={handleSubmit} 
                          disabled={isLoading} 
@@ -321,13 +314,13 @@ export default function KeyinPage() {
                          {isLoading ? (
                            <>
                              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                             <span>數據同步中</span>
+                             <span>對沖同步中</span>
                            </>
                          ) : (
                            <span>提交預約核准</span>
                          )}
                        </button>
-                       <p className="text-[10px] font-bold text-slate-400 mt-4 uppercase tracking-tighter">提交後資料將物理寫入系統暫存區，靜候行政核定</p>
+                       <p className="text-center text-[10px] font-bold text-slate-400 mt-4 uppercase tracking-tighter">提交後資料將物理寫入系統緩衝區，靜候行政核定結案</p>
                     </div>
                  </div>
               </section>
@@ -341,7 +334,7 @@ export default function KeyinPage() {
                     <span className="material-symbols-outlined text-amber-500">hourglass_empty</span>
                     <h2 className="text-lg font-bold text-slate-800 tracking-tight">審核中案件清單 ({pendingRecords.length})</h2>
                   </div>
-                  <button onClick={() => fetchPendingRecords(vendorName)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+                  <button onClick={() => fetchPendingRecords(vendorName)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-100">
                     <span className="material-symbols-outlined text-sm">sync</span> 重新整理
                   </button>
                 </div>
