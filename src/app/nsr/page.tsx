@@ -109,7 +109,6 @@ export default function NsrAdminPage() {
 
   return (
     <div className={styles.medicalGradient}>
-      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
       {/* 🚀 手機版側邊欄遮罩 */}

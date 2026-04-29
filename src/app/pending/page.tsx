@@ -74,7 +74,6 @@ export default function PendingPage() {
   return (
     <div className="bg-[#faf8ff] text-slate-800 font-body-md antialiased min-h-screen flex relative overflow-x-hidden">
       
-      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
       <style dangerouslySetInnerHTML={{ __html: `
         .clinical-glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 4px 20px rgba(0,0,0,0.03); }
         .inner-glow { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5); }

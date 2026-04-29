@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 下面可以保留您原有的其他 CSS 設定 */
+
 /* 下方保留您原本其他的全域 CSS 樣式 (如果有的話) */
 :root {
   --background: #ffffff;

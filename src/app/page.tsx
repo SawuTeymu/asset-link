@@ -108,23 +108,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6 font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC','PingFang_TC',system-ui,sans-serif] text-[#191c1e] antialiased">
       
       {/* 🚀 確保自定義顏色(primary, error)在環境中生效的配置 */}
-      <script src="https://cdn.tailwindcss.com?plugins=forms" async></script>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;700&display=swap" rel="stylesheet" />
-      <script dangerouslySetInnerHTML={{ __html: `
-        tailwind.config = {
-          theme: {
-            extend: {
-              colors: {
-                primary: "#006194",
-                "primary-fixed-dim": "#cce5ff",
-                "secondary-fixed": "#cce8e0",
-                error: "#ba1a1a"
-              }
-            }
-          }
-        }
-      `}} />
-
       {/* 物理背景裝飾 */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-primary-fixed-dim/20 rounded-full blur-[120px] mix-blend-multiply"></div>

@@ -1,0 +1,301 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VANS 資料整合小工具</title>
+    <!-- 載入 Tailwind CSS 與圖示庫 (僅用於排版與視覺) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="min-h-screen bg-slate-50 p-4 md:p-8 font-sans">
+    <div class="max-w-3xl mx-auto">
+        
+        <!-- 工具標題 -->
+        <div class="flex items-center gap-3 mb-8">
+            <div class="bg-blue-600 p-2 rounded-lg shadow-blue-200 shadow-lg">
+                <i data-lucide="file-spreadsheet" class="text-white w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">VANS 資料整合小工具</h1>
+                <p class="text-slate-500 text-sm">將全用戶資料快速對齊稽核模板（純本地端處理，無資料外洩風險）</p>
+            </div>
+        </div>
+
+        <!-- 檔案上傳區塊 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- 來源檔案上傳 -->
+            <div id="source-box" class="bg-white p-6 rounded-2xl shadow-sm border-2 border-dashed border-slate-200 hover:border-blue-300 transition-all">
+                <div class="flex flex-col items-center text-center">
+                    <i data-lucide="upload" id="source-icon" class="w-8 h-8 mb-3 text-slate-400"></i>
+                    <h3 class="font-semibold text-slate-700 mb-1">來源資料 (Source)</h3>
+                    <p id="source-name" class="text-xs text-slate-500 mb-4 truncate w-full">請上傳 vans全用戶.csv</p>
+                    <label class="bg-white border border-slate-200 px-4 py-2 rounded-full text-sm font-medium text-slate-600 cursor-pointer hover:bg-slate-50 transition-colors shadow-sm">
+                        選擇檔案
+                        <input type="file" id="source-input" class="hidden" accept=".csv">
+                    </label>
+                </div>
+            </div>
+
+            <!-- 模板檔案上傳 -->
+            <div id="template-box" class="bg-white p-6 rounded-2xl shadow-sm border-2 border-dashed border-slate-200 hover:border-emerald-300 transition-all">
+                <div class="flex flex-col items-center text-center">
+                    <i data-lucide="file-text" id="template-icon" class="w-8 h-8 mb-3 text-slate-400"></i>
+                    <h3 class="font-semibold text-slate-700 mb-1">目標模板 (Template)</h3>
+                    <p id="template-name" class="text-xs text-slate-500 mb-4 truncate w-full">請上傳 vans_audit_template.csv</p>
+                    <label class="bg-white border border-slate-200 px-4 py-2 rounded-full text-sm font-medium text-slate-600 cursor-pointer hover:bg-slate-50 transition-colors shadow-sm">
+                        選擇檔案
+                        <input type="file" id="template-input" class="hidden" accept=".csv">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 錯誤訊息提示區 -->
+        <div id="error-msg" class="hidden bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 flex items-center gap-3">
+            <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+            <span id="error-text" class="text-sm"></span>
+        </div>
+
+        <!-- 執行操作區塊 -->
+        <div class="flex flex-col gap-4" id="action-area">
+            <button id="process-btn" disabled class="w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md bg-slate-200 text-slate-400 cursor-not-allowed">
+                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                <span>開始整合資料</span>
+            </button>
+        </div>
+
+        <!-- 執行記錄區塊 -->
+        <div id="log-area" class="mt-8 hidden">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">執行記錄</h4>
+            <div id="log-container" class="bg-slate-900 rounded-xl p-4 font-mono text-xs text-emerald-400 max-h-48 overflow-y-auto shadow-inner">
+            </div>
+        </div>
+    </div>
+
+    <!-- 邏輯腳本 -->
+    <script>
+        // 初始化圖示
+        lucide.createIcons();
+
+        // 綁定 DOM 元素
+        const sourceInput = document.getElementById('source-input');
+        const templateInput = document.getElementById('template-input');
+        const sourceBox = document.getElementById('source-box');
+        const templateBox = document.getElementById('template-box');
+        const sourceName = document.getElementById('source-name');
+        const templateName = document.getElementById('template-name');
+        const sourceIcon = document.getElementById('source-icon');
+        const templateIcon = document.getElementById('template-icon');
+        const processBtn = document.getElementById('process-btn');
+        const actionArea = document.getElementById('action-area');
+        const errorMsg = document.getElementById('error-msg');
+        const errorText = document.getElementById('error-text');
+        const logArea = document.getElementById('log-area');
+        const logContainer = document.getElementById('log-container');
+
+        let sourceFile = null;
+        let templateFile = null;
+        let resultBlob = null;
+
+        // 新增執行記錄
+        function addLog(msg) {
+            logArea.classList.remove('hidden');
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = 'mb-1';
+            div.textContent = `> ${time}: ${msg}`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 顯示或隱藏錯誤訊息
+        function showError(msg) {
+            if (msg) {
+                errorText.textContent = msg;
+                errorMsg.classList.remove('hidden');
+            } else {
+                errorMsg.classList.add('hidden');
+            }
+        }
+
+        // 檢查兩個檔案是否皆已上傳
+        function checkReady() {
+            if (sourceFile && templateFile) {
+                processBtn.disabled = false;
+                processBtn.className = "w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98]";
+            }
+        }
+
+        // 處理來源檔案上傳
+        sourceInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                sourceFile = e.target.files[0];
+                sourceName.textContent = sourceFile.name;
+                sourceBox.classList.replace('border-slate-200', 'border-blue-400');
+                sourceBox.classList.add('bg-blue-50/30');
+                sourceIcon.classList.replace('text-slate-400', 'text-blue-500');
+                addLog(`已讀取來源檔案: ${sourceFile.name}`);
+                checkReady();
+            }
+        });
+
+        // 處理模板檔案上傳
+        templateInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                templateFile = e.target.files[0];
+                templateName.textContent = templateFile.name;
+                templateBox.classList.replace('border-slate-200', 'border-emerald-400');
+                templateBox.classList.add('bg-emerald-50/30');
+                templateIcon.classList.replace('text-slate-400', 'text-emerald-500');
+                addLog(`已讀取模板檔案: ${templateFile.name}`);
+                checkReady();
+            }
+        });
+
+        // 簡易 CSV 解析器 (處理換行與雙引號內的逗號)
+        const parseCSV = (text) => {
+            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+            return lines.map(line => {
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    if (char === '"') inQuotes = !inQuotes;
+                    else if (char === ',' && !inQuotes) {
+                        result.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                result.push(current.trim());
+                return result;
+            });
+        };
+
+        // 智慧讀取檔案內容 (自動偵測 UTF-8 或 Big5)
+        const readAsText = (file) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const buffer = e.target.result;
+                    try {
+                        // 嘗試以嚴格模式解析 UTF-8
+                        const decoderUtf8 = new TextDecoder('utf-8', { fatal: true });
+                        const text = decoderUtf8.decode(buffer);
+                        resolve({ text, encoding: 'UTF-8' });
+                    } catch (err) {
+                        // 若失敗，則假設為台灣常用的 Big5 (CP950) 編碼
+                        try {
+                            const decoderBig5 = new TextDecoder('big5');
+                            const text = decoderBig5.decode(buffer);
+                            resolve({ text, encoding: 'Big5' });
+                        } catch (err2) {
+                            reject(new Error("無法識別檔案編碼"));
+                        }
+                    }
+                };
+                reader.onerror = () => reject(new Error("讀取檔案失敗"));
+                reader.readAsArrayBuffer(file);
+            });
+        };
+
+        // 點擊開始整合按鈕
+        processBtn.addEventListener('click', async () => {
+            showError(null);
+            logContainer.innerHTML = '';
+            addLog('開始整合程序...');
+            
+            processBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-5 h-5 animate-spin"></i><span>處理中...</span>';
+            lucide.createIcons();
+            processBtn.disabled = true;
+
+            try {
+                // 1. 解析模板檔案
+                const templateResult = await readAsText(templateFile);
+                const templateText = templateResult.text;
+                addLog(`模板檔案編碼判定為: ${templateResult.encoding}`);
+                const templateRows = parseCSV(templateText);
+                if (templateRows.length === 0) throw new Error('模板檔案為空');
+                const targetColumns = templateRows[0].map(c => c.replace(/^"|"$/g, ''));
+                addLog(`讀取目標欄位: ${targetColumns.join(', ')}`);
+
+                // 2. 解析來源檔案
+                const sourceResult = await readAsText(sourceFile);
+                const sourceText = sourceResult.text;
+                addLog(`來源檔案編碼判定為: ${sourceResult.encoding}`);
+                
+                const sourceRows = parseCSV(sourceText);
+
+                if (sourceRows.length < 2) throw new Error('來源檔案資料量不足');
+                const sourceHeaders = sourceRows[0].map(c => c.replace(/^"|"$/g, ''));
+
+                // 3. 建立欄位索引對應表
+                const colMap = {};
+                targetColumns.forEach(target => {
+                    const index = sourceHeaders.findIndex(h => h === target);
+                    colMap[target] = index;
+                });
+
+                // 4. 進行資料抽取與重組
+                const resultRows = [targetColumns];
+                for (let i = 1; i < sourceRows.length; i++) {
+                    const rowData = sourceRows[i];
+                    const newRow = targetColumns.map(target => {
+                        const idx = colMap[target];
+                        return idx !== -1 ? rowData[idx] || '' : '';
+                    });
+                    resultRows.push(newRow);
+                }
+
+                // 5. 轉換為 CSV 格式字串並加上 BOM 頭防亂碼
+                const csvContent = resultRows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                resultBlob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                
+                addLog(`整合完成！成功處理 ${resultRows.length - 1} 筆設備資料。`);
+
+                // 6. 將操作區塊轉換為下載與重置按鈕
+                actionArea.innerHTML = `
+                    <div class="flex gap-3">
+                        <button id="download-btn" class="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-md active:scale-[0.98]">
+                            <i data-lucide="download" class="w-5 h-5"></i>
+                            下載整合結果 (CSV)
+                        </button>
+                        <button id="reset-btn" class="px-6 bg-slate-200 text-slate-600 py-4 rounded-xl font-bold hover:bg-slate-300 transition-all">
+                            重新開始
+                        </button>
+                    </div>
+                `;
+                lucide.createIcons();
+
+                // 綁定下載事件
+                document.getElementById('download-btn').addEventListener('click', () => {
+                    const url = URL.createObjectURL(resultBlob);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'vans_audit_result.csv');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                });
+
+                // 綁定重置事件
+                document.getElementById('reset-btn').addEventListener('click', () => {
+                    location.reload();
+                });
+
+            } catch (err) {
+                showError(`執行發生錯誤: ${err.message}`);
+                addLog(`錯誤: ${err.message}`);
+                
+                // 恢復原本的按鈕狀態
+                processBtn.innerHTML = '<i data-lucide="check-circle-2" class="w-5 h-5"></i><span>開始整合資料</span>';
+                lucide.createIcons();
+                processBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

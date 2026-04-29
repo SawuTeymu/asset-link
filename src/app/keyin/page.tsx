@@ -49,7 +49,6 @@ export default function KeyinPage() {
 
   return (
     <div className="min-h-screen text-on-surface font-body-md overflow-x-hidden relative bg-[#faf8ff] antialiased">
-      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
       <style dangerouslySetInnerHTML={{ __html: `
         .clinical-glass { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.5); }
         .crystal-input { width: 100%; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(203, 213, 225, 0.8); border-radius: 0.5rem; padding: 12px 16px; font-size: 14px; outline: none; }

@@ -141,7 +141,6 @@ export default function AdminDashboard() {
 
   return (
     <div className={`min-h-screen font-body-md text-on-surface antialiased flex relative overflow-hidden ${styles.medicalGradient}`}>
-      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
       
       {/* 🚀 背景動態球體 (物理脫離) */}
       <div className="absolute inset-0 overflow-hidden -z-10">

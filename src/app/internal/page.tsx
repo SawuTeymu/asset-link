@@ -112,7 +112,6 @@ export default function InternalPage() {
   return (
     <div className="min-h-screen text-slate-800 font-body-md overflow-x-hidden relative bg-[#faf8ff] antialiased">
       
-      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
       <style dangerouslySetInnerHTML={{ __html: `
         .clinical-bg { background: radial-gradient(at 0% 0%, #e0f2fe 0%, transparent 50%), radial-gradient(at 100% 0%, #f0fdf4 0%, transparent 50%), radial-gradient(at 100% 100%, #eef2ff 0%, transparent 50%); background-color: #faf8ff; background-attachment: fixed; }
         .clinical-glass { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.5); }
