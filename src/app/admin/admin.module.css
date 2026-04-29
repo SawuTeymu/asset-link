@@ -1,0 +1,57 @@
+/* 🚀 Admin 專用物理樣式矩陣 - V300.6 (相容性修復版) */
+
+.medicalGradient {
+    background: radial-gradient(circle at top right, #e0f2fe 0%, #faf8ff 100%);
+    min-height: 100vh;
+}
+
+.clinicalGlass {
+    background: rgba(255, 255, 255, 0.7);
+    /* 🚀 物理修復：-webkit- 前綴必須排在標準屬性之前 */
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.zebraGlass tr:nth-child(even) { 
+    background: rgba(2, 132, 199, 0.03); 
+}
+
+.zebraGlass tr:nth-child(odd) { 
+    background: transparent; 
+}
+
+.iconFill { 
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; 
+}
+
+.breathingSphere {
+    filter: blur(60px);
+    opacity: 0.4;
+    animation: breathe 8s infinite ease-in-out;
+}
+
+.delay2s { animation-delay: -2s; }
+.delay4s { animation-delay: -4s; }
+
+@keyframes breathe {
+    0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.3; }
+    50% { transform: scale(1.15) translate(20px, -20px); opacity: 0.5; }
+}
+
+/* 🚀 物理進度條 (徹底消滅 style={{ width }} 報警) */
+.progressContainer {
+    width: 100%;
+    background-color: #f1f5f9;
+    height: 6px;
+    border-radius: 9999px;
+    overflow: hidden;
+    display: flex;
+}
+
+.progressBarBase {
+    height: 100%;
+    background-color: #006194;
+    transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 9999px;
+}

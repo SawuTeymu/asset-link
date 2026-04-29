@@ -1,0 +1,45 @@
+/* 🚀 NSR 專用物理樣式矩陣 - V300.7 */
+
+.medicalGradient {
+    background: radial-gradient(circle at top right, #e0f2fe 0%, #faf8ff 100%);
+    min-height: 100vh;
+}
+
+.clinicalGlass {
+    background: rgba(255, 255, 255, 0.7);
+    /* 🚀 修復：-webkit- 前綴必須排在標準屬性之前 */
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 24px -1px rgba(2, 132, 199, 0.05);
+}
+
+.innerGlow {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.zebraGlass tr:nth-child(even) {
+    background: rgba(2, 132, 199, 0.03);
+}
+
+.iconFill {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.vitalLine {
+    opacity: 0.3;
+    stroke: #006194;
+    stroke-width: 2;
+    fill: none;
+}
+
+/* 動畫延遲類別 */
+.delay2s { animation-delay: -2s; }
+.delay4s { animation-delay: -4s; }
+
+/* 針對 Mobile RWD 的表格容器 */
+.tableContainer {
+    overflow-x: auto;
+    width: 100%;
+    /* 🚀 修復：移除不支援的 -webkit-overflow-scrolling 以符合現代規範 */
+}
