@@ -5,27 +5,20 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { approveAsset, rejectAsset } from "@/lib/actions/assets";
 
-// 🚀 物理導入同目錄樣式模組 (確保絕對 0 內聯樣式)
+// 🚀 物理導入同目錄樣式模組
 import styles from "./pending.module.css";
 
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V300.5 Medical M3 (全功能對沖 + 零內聯樣式純淨版)
- * 物理職責：
- * 1. 響應式升級：Bento Grid RWD 適配 (1欄 -> 2欄 -> 3欄)，動態側邊欄遮罩。
- * 2. 邏輯 0 刪除：保留 ERI 簽核對正 4 引數、Session 驗證與退回邏輯。
- * 3. 絕對樣式脫離：拔除所有 <style> 標籤與 Tailwind CDN，確保生產環境 0 報警。
+ * 狀態：V300.9 Medical M3 (RWD 手機模式完美版 + 零內聯樣式)
  * ==========================================
  */
 
 export default function PendingPage() {
   const router = useRouter();
 
-  // 🚀 手機側邊欄狀態
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // --- 1. 核心數據與 UI 狀態矩陣 (100% 完整保留) ---
   const [pendingList, setPendingList] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -53,11 +46,9 @@ export default function PendingPage() {
 
   useEffect(() => { fetchPending(); }, [fetchPending]);
 
-  // --- 3. 物理簽核對沖邏輯 (0 刪除：對正 4 引數) ---
   const handleApprove = async (item: any) => {
     setIsProcessing(true); setLoaderText("核定中...");
     try {
-      // 🚀 物理對正：傳入完整 4 個引數 [id, ip, mac, sn]
       await approveAsset(item.id, item.核定ip || "", item.主要mac || "", item.產品序號 || item.sn || "");
       showToast("行政核定成功，已歸檔", "success"); fetchPending();
     } catch { showToast("核定失敗：請檢查網路或參數", "error"); }
@@ -76,18 +67,14 @@ export default function PendingPage() {
 
   return (
     <div className="bg-[#faf8ff] text-slate-800 font-body-md antialiased min-h-screen flex relative overflow-x-hidden">
-      
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-      {/* 🚀 物理脫離背景呼叫 */}
       <div className={`${styles.bgGradientCustom} min-h-screen w-full fixed inset-0 -z-10`}></div>
 
-      {/* 🚀 手機版遮罩 */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-[45] md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
       )}
 
-      {/* --- RWD SideNavBar --- */}
       <aside className={`w-64 fixed left-0 top-0 z-50 h-screen border-r border-white/40 bg-white/70 backdrop-blur-2xl flex flex-col py-6 px-4 gap-2 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
           <div className="flex items-center justify-between mb-8 px-2">
             <div className="flex items-center gap-3">
@@ -122,9 +109,7 @@ export default function PendingPage() {
           </nav>
       </aside>
 
-      {/* --- Main Content (RWD ml-0 to md:ml-64) --- */}
       <main className="w-full md:ml-64 flex-1 flex flex-col min-h-screen">
-        
         <header className="sticky top-0 z-30 w-full bg-white/70 backdrop-blur-lg border-b border-slate-200/50 shadow-sm px-4 md:px-8 h-16 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-sky-800 p-1"><span className="material-symbols-outlined">menu</span></button>
@@ -136,14 +121,13 @@ export default function PendingPage() {
               <input className="bg-white/60 border border-slate-200 rounded-full py-1.5 pl-10 pr-4 text-sm w-64 focus:ring-2 focus:ring-blue-500/20 outline-none" placeholder="搜尋案件或廠商..." type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
             <button className="text-slate-500 hover:text-blue-600"><span className="material-symbols-outlined">notifications</span></button>
-            <img alt="Admin" className="w-8 h-8 rounded-full border border-slate-200 object-cover hidden sm:block" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCjnnKa9P0sn-QHd5TXaWA6ZQ3UlERSV9JDDoo3KoVp82-Jg5JGDRSezHjTqCk2zAhshNuoCFF1LjPxs5Ga8SrG-h0j3M--6-TKKpm_t_4Z4bcuO0O9Cqx2WZkY41WTRnpLmYxIVxi9Rxg1RmOrCafBWU6Ih_tAq0wKaWeydD1qscgH16_R8VhI-afZk3r1b4xSThxzF9OcXsV4dxtS6XF_ewrqanhOawWNheubclKK6jbmUtUgOenWS43Zfu16Ble9OskcH2qxgDs" />
           </div>
         </header>
 
         <div className="p-4 md:p-8 w-full max-w-[1440px] mx-auto flex-1">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 md:mb-8 animate-in fade-in duration-700">
             <div>
-              <div className="flex items-center gap-2 text-blue-600 font-bold mb-1"><span className="material-symbols-outlined text-sm">folder_open</span><span className="text-xs tracking-widest uppercase">系統代碼 V300.4</span></div>
+              <div className="flex items-center gap-2 text-blue-600 font-bold mb-1"><span className="material-symbols-outlined text-sm">folder_open</span><span className="text-xs tracking-widest uppercase">系統代碼 V300.9</span></div>
               <h2 className="text-2xl md:text-3xl font-black text-slate-800">待核定案件矩陣</h2>
               <p className="text-sm text-slate-500 mt-1">目前共有 {pendingList.length} 件資產預約核定事項等待處理</p>
             </div>
@@ -152,10 +136,7 @@ export default function PendingPage() {
             </div>
           </div>
 
-          {/* 🚀 Bento Grid RWD 適配 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-in slide-in-from-bottom-8 duration-1000">
-             
-             {/* 核心統計卡片 */}
              <div className={`${styles.clinicalGlass} ${styles.innerGlow} rounded-2xl p-6 relative shadow-sm col-span-1 sm:col-span-2 lg:col-span-1`}>
                 <div className="absolute -right-8 -top-8 w-32 h-32 bg-blue-100/50 rounded-full blur-2xl"></div>
                 <div className="relative z-10 space-y-4">
@@ -168,7 +149,6 @@ export default function PendingPage() {
                 </div>
              </div>
 
-             {/* 動態渲染待核定案件 */}
              {pendingList.length === 0 ? (
                 <div className={`sm:col-span-2 ${styles.clinicalGlass} rounded-2xl p-12 flex flex-col items-center justify-center text-slate-400 border-dashed border-2`}>
                     <span className="material-symbols-outlined text-5xl mb-4 text-emerald-400">task_alt</span>
@@ -221,7 +201,6 @@ export default function PendingPage() {
         </div>
       </main>
 
-      {/* --- 全域強同步遮罩 --- */}
       {(isLoading || isProcessing) && (
         <div className="fixed inset-0 z-[6000] flex flex-col items-center justify-center bg-white/60 backdrop-blur-md">
           <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4 shadow-sm"></div>
@@ -229,7 +208,6 @@ export default function PendingPage() {
         </div>
       )}
 
-      {/* --- 物理通知系統 --- */}
       <div className="fixed bottom-6 right-4 md:bottom-10 md:right-8 z-[7000] flex flex-col gap-3">
         {toasts.map(t => (
           <div key={t.id} className={`px-4 md:px-6 py-3 rounded-xl shadow-lg font-bold text-xs animate-in slide-in-from-right-4 flex items-center gap-2 border ${t.type === "success" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
