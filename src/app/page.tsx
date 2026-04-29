@@ -8,14 +8,14 @@ import { ADMIN_CREDENTIALS_LIST } from "@/lib/constants";
 /**
  * ==========================================
  * 檔案：src/app/page.tsx
- * 狀態：V2.6 嚴格語法防護版 (移除冗餘 eslint-disable)
+ * 狀態：V2.9.1 白話專業純淨版 (UX 接地氣優化)
  * 物理職責：
- * 1. 執行登入分流與本地密碼驗證。
- * 2. 維持 100% 嚴格語法保護，並消除未使用之抑制指令。
+ * 1. 提示詞優化：將太過火的「中樞」改回標準且順耳的「系統」，維持企業級信任感。
+ * 2. 效能優化：徹底拔除 Tailwind CDN 腳本，交由全域編譯引擎接管，消滅黃字報警。
+ * 3. 邏輯防護：維持 100% 嚴格語法保護與型別對沖。
  * ==========================================
  */
 
-// 🚀 1. 定義廠商資料庫回傳強型別 (消滅 ParserError)
 interface VendorDbRow {
   廠商名稱: string;
   行政狀態: string;
@@ -45,10 +45,8 @@ export default function LoginPage() {
 
         if (error) throw error;
         
-        // 🚀 雙重轉型：抹除 Supabase 的 ParserError，強制套用正確中文介面
         const typedData = data as unknown as VendorDbRow[] | null;
         
-        // 🚀 數據對映：現在 v 具備強型別，不再觸發 TS2345
         const mappedData = (typedData || []).map((v) => ({
           name: String(v.廠商名稱 || ""),
           status: String(v.行政狀態 || "")
@@ -66,13 +64,12 @@ export default function LoginPage() {
   const handleAdminLogin = () => {
     setErrorMsg("");
     if (!adminAccount.trim() || !adminPassword.trim()) {
-      setErrorMsg("請輸入完整的帳號與密碼");
+      setErrorMsg("驗證提示：請輸入完整的帳號與密碼。");
       return;
     }
 
     setIsLoading(true);
     
-    // 物理驗證：比對 constants.ts 中的帳密陣列
     const isValidAdmin = ADMIN_CREDENTIALS_LIST.some(
       (admin) => admin.uid === adminAccount && admin.password === adminPassword
     );
@@ -81,7 +78,7 @@ export default function LoginPage() {
       sessionStorage.setItem("asset_link_admin_auth", "true");
       router.push("/admin");
     } else {
-      setErrorMsg("🚫 驗證失敗：帳號或密碼錯誤。");
+      setErrorMsg("🚫 登入拒絕：帳號或密碼驗證失敗，請重新確認。");
       setIsLoading(false);
     }
   };
@@ -90,12 +87,12 @@ export default function LoginPage() {
   const handleVendorLogin = () => {
     setErrorMsg("");
     if (!selectedVendor) {
-      setErrorMsg("請選擇您的廠商名稱");
+      setErrorMsg("驗證提示：請先選擇您的授權廠商名稱。");
       return;
     }
     const vendorData = vendors.find(v => v.name === selectedVendor);
     if (vendorData?.status === '停權' || vendorData?.status === '停用') {
-       setErrorMsg("⚠️ 您的帳號已被凍結，請聯繫資訊室。");
+       setErrorMsg("⚠️ 授權異常：此廠商帳號已暫停使用，請聯繫資訊中心確認。");
        return;
     }
 
@@ -107,8 +104,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6 font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC','PingFang_TC',system-ui,sans-serif] text-[#191c1e] antialiased">
       
-      {/* 🚀 確保自定義顏色(primary, error)在環境中生效的配置 */}
+      {/* 🚀 物理拔除了 Tailwind CDN，僅保留 Google Material Symbols 字體，確保效能與無報警 */}
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;700&display=swap" rel="stylesheet" />
+
       {/* 物理背景裝飾 */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-primary-fixed-dim/20 rounded-full blur-[120px] mix-blend-multiply"></div>
@@ -121,8 +119,9 @@ export default function LoginPage() {
           <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-primary/20 rotate-3 transition-transform hover:rotate-0 duration-500">
             <span className="material-symbols-outlined text-white text-4xl">token</span>
           </div>
-          <h1 className="text-3xl font-black tracking-tighter mb-2">預約裝機/IP申請系統<span className="text-primary"></span></h1>
-          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">A-L-I-N-K </p>
+          {/* 🚀 改為最標準且順耳的「系統」 */}
+          <h1 className="text-2xl font-black tracking-tight mb-2">ALink 設備裝機與網路申請系統<span className="text-primary"></span></h1>
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">ASSET-LINK PORTAL</p>
         </div>
 
         {/* 登入表單區塊 */}
@@ -131,7 +130,6 @@ export default function LoginPage() {
           {/* 頻道選擇按鈕 */}
           {!loginType && (
             <div className="space-y-4">
-              {/* 🚀 防護點：確保事件回傳具備大括號，消滅 unused-expressions */}
               <button 
                 onClick={() => { setLoginType("vendor"); }}
                 className="w-full p-5 rounded-2xl bg-white border-2 border-slate-100 hover:border-primary hover:bg-blue-50/50 transition-all group flex items-center gap-4 text-left"
@@ -140,8 +138,8 @@ export default function LoginPage() {
                   <span className="material-symbols-outlined text-slate-500 group-hover:text-primary">storefront</span>
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-800 text-lg">廠商預約申請</h3>
-                  <p className="text-[10px] font-bold text-slate-400">Vendor Application Portal</p>
+                  <h3 className="font-black text-slate-800 text-lg">合作廠商作業入口</h3>
+                  <p className="text-[10px] font-bold text-slate-400 mt-1">辦理設備裝機預約與網路 IP 申請</p>
                 </div>
               </button>
 
@@ -153,8 +151,8 @@ export default function LoginPage() {
                   <span className="material-symbols-outlined text-slate-500 group-hover:text-white">admin_panel_settings</span>
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-800 text-lg group-hover:text-white transition-colors">資訊室管理者登入</h3>
-                  <p className="text-[10px] font-bold text-slate-400 group-hover:text-white/60 transition-colors">Admin Management Hub</p>
+                  <h3 className="font-black text-slate-800 text-lg group-hover:text-white transition-colors">資訊中心管理後台</h3>
+                  <p className="text-[10px] font-bold text-slate-400 mt-1 group-hover:text-white/60 transition-colors">執行案件核定、VANS 稽核與 NSR 計價</p>
                 </div>
               </button>
             </div>
@@ -178,24 +176,24 @@ export default function LoginPage() {
                  >
                    <span className="material-symbols-outlined text-sm">arrow_back</span>
                  </button>
-                 <h2 className="text-lg font-black text-slate-800">管理者登入</h2>
+                 <h2 className="text-lg font-black text-slate-800">資訊中心登入</h2>
               </div>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理帳號</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理員帳號 (Admin ID)</label>
                   <input 
                     type="text" 
                     title="管理帳號"
                     aria-label="管理帳號"
                     value={adminAccount}
                     onChange={(e) => { setAdminAccount(e.target.value); }}
-                    placeholder="請輸入帳號"
+                    placeholder="請輸入系統帳號"
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-slate-900 focus:bg-white transition-all placeholder:text-slate-300"
                     onKeyDown={(e) => { if (e.key === 'Enter') { handleAdminLogin(); } }}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理密碼</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">授權密碼 (Password)</label>
                   <input 
                     type="password" 
                     title="管理密碼"
@@ -211,9 +209,9 @@ export default function LoginPage() {
               <button 
                 onClick={() => { handleAdminLogin(); }}
                 disabled={isLoading}
-                className="w-full bg-slate-900 text-white rounded-2xl py-4 mt-2 font-black uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-slate-900 text-white rounded-2xl py-4 mt-2 font-black tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '登入系統'}
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '✨ 驗證並登入'}
               </button>
             </div>
           )}
@@ -228,22 +226,23 @@ export default function LoginPage() {
                  >
                    <span className="material-symbols-outlined text-sm">arrow_back</span>
                  </button>
-                 <h2 className="text-lg font-black text-slate-800">選擇駐點廠商</h2>
+                 <h2 className="text-lg font-black text-slate-800">廠商報到</h2>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">廠商名稱 (Vendor ID)</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">請選擇您的授權廠商 (Vendor Entity)</label>
                 <div className="relative">
                   <select 
                     value={selectedVendor}
                     onChange={(e) => { setSelectedVendor(e.target.value); }}
                     title="選擇廠商"
                     aria-label="選擇廠商"
-                    className="w-full appearance-none bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-primary focus:bg-white transition-all"
+                    /* 🚀 物理修復：加入 bg-none 消滅重疊的預設箭頭，並加入 pr-12 防止文字重疊 */
+                    className="w-full appearance-none bg-none pr-12 bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-primary focus:bg-white transition-all"
                   >
-                    <option value="" disabled>請選擇您的廠商名稱...</option>
+                    <option value="" disabled>請下拉選取您的所屬單位...</option>
                     {vendors.map(v => (
                       <option key={v.name} value={v.name}>
-                        {v.name} {v.status === '停用' || v.status === '停權' ? '(🚫 已停用)' : ''}
+                        {v.name} {v.status === '停用' || v.status === '停權' ? '(🚫 授權暫停)' : ''}
                       </option>
                     ))}
                   </select>
@@ -253,9 +252,9 @@ export default function LoginPage() {
               <button 
                 onClick={() => { handleVendorLogin(); }}
                 disabled={isLoading || vendors.length === 0}
-                className="w-full bg-primary text-white rounded-2xl py-4 font-black uppercase tracking-widest hover:bg-primary/90 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-primary text-white rounded-2xl py-4 font-black tracking-widest hover:bg-primary/90 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '進入作業區'}
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '🚀 進入作業區'}
               </button>
             </div>
           )}
