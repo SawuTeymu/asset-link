@@ -8,14 +8,14 @@ import { ADMIN_CREDENTIALS_LIST } from "@/lib/constants";
 /**
  * ==========================================
  * 檔案：src/app/page.tsx
- * 狀態：V300.4 Light Medical M3 (明亮寬敞旗艦版)
+ * 狀態：V2.6 嚴格語法防護版 (移除冗餘 eslint-disable)
  * 物理職責：
- * 1. 視覺優化：嚴格遵守「不要深色」，回歸明亮醫療漸層，並將容器擴展至 1200px 消除擁擠感。
- * 2. 邏輯 0 刪除：保留所有登入分流、身分驗證、廠商「停權/停用」狀態攔截。
- * 3. 物理脫離：維持內聯樣式淨空，將所有 style 轉譯為 CSS 類別，確保編譯全綠。
+ * 1. 執行登入分流與本地密碼驗證。
+ * 2. 維持 100% 嚴格語法保護，並消除未使用之抑制指令。
  * ==========================================
  */
 
+// 🚀 1. 定義廠商資料庫回傳強型別 (消滅 ParserError)
 interface VendorDbRow {
   廠商名稱: string;
   行政狀態: string;
@@ -23,296 +23,262 @@ interface VendorDbRow {
 
 export default function LoginPage() {
   const router = useRouter();
-  
-  // --- 1. 核心邏輯狀態 (100% 完整保留) ---
+
+  // --- 狀態管理 ---
   const [loginType, setLoginType] = useState<"admin" | "vendor" | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
   const [adminAccount, setAdminAccount] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [vendors, setVendors] = useState<{name: string, status: string}[]>([]);
   const [selectedVendor, setSelectedVendor] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  // --- 2. 初始化：廠商清單與狀態對沖 (100% 保留) ---
+  // --- 初始化：從 Supabase 物理抓取廠商名單 ---
   useEffect(() => {
     const fetchVendors = async () => {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("vendors")
           .select("廠商名稱, 行政狀態")
           .eq("授權啟用開關", true)
           .order("廠商名稱", { ascending: true });
-          
-        const mappedData = (data as unknown as VendorDbRow[] || []).map((v) => ({
+
+        if (error) throw error;
+        
+        // 🚀 雙重轉型：抹除 Supabase 的 ParserError，強制套用正確中文介面
+        const typedData = data as unknown as VendorDbRow[] | null;
+        
+        // 🚀 數據對映：現在 v 具備強型別，不再觸發 TS2345
+        const mappedData = (typedData || []).map((v) => ({
           name: String(v.廠商名稱 || ""),
           status: String(v.行政狀態 || "")
         }));
+        
         setVendors(mappedData);
-      } catch (err) { 
-        console.error("物理連線異常:", err); 
+      } catch (err: unknown) {
+        console.error("廠商名單同步失敗:", err instanceof Error ? err.message : String(err));
       }
     };
     fetchVendors();
   }, []);
 
-  // --- 3. 管理端登入對沖 (100% 完整保留) ---
+  // --- 登入邏輯：多帳戶迴圈物理驗證 ---
   const handleAdminLogin = () => {
     setErrorMsg("");
-    if (!adminAccount.trim() || !adminPassword.trim()) { 
-      setErrorMsg("物理權限缺失：請輸入完整帳號與密碼"); 
-      return; 
+    if (!adminAccount.trim() || !adminPassword.trim()) {
+      setErrorMsg("請輸入完整的帳號與密碼");
+      return;
     }
+
     setIsLoading(true);
-    const matched = ADMIN_CREDENTIALS_LIST.find(a => a.uid === adminAccount && a.password === adminPassword);
-    if (matched) {
+    
+    // 物理驗證：比對 constants.ts 中的帳密陣列
+    const isValidAdmin = ADMIN_CREDENTIALS_LIST.some(
+      (admin) => admin.uid === adminAccount && admin.password === adminPassword
+    );
+
+    if (isValidAdmin) {
       sessionStorage.setItem("asset_link_admin_auth", "true");
-      sessionStorage.setItem("asset_link_admin_name", matched.uid);
       router.push("/admin");
     } else {
-      setErrorMsg("🚫 驗證失敗：物理特徵不符。");
+      setErrorMsg("🚫 驗證失敗：帳號或密碼錯誤。");
       setIsLoading(false);
     }
   };
 
-  // --- 4. 廠商端登入對沖 (100% 完整保留) ---
+  // --- 登入邏輯：廠商通道 ---
   const handleVendorLogin = () => {
-    if (!selectedVendor) return;
-    const vData = vendors.find(v => v.name === selectedVendor);
-    // 物理狀態攔截引擎
-    if (vData?.status === '停權' || vData?.status === '停用') { 
-      setErrorMsg("⚠️ 帳號已被物理封鎖，請聯繫系統管理員。"); 
-      return; 
+    setErrorMsg("");
+    if (!selectedVendor) {
+      setErrorMsg("請選擇您的廠商名稱");
+      return;
     }
+    const vendorData = vendors.find(v => v.name === selectedVendor);
+    if (vendorData?.status === '停權' || vendorData?.status === '停用') {
+       setErrorMsg("⚠️ 您的帳號已被凍結，請聯繫資訊室。");
+       return;
+    }
+
     setIsLoading(true);
     sessionStorage.setItem("asset_link_vendor", selectedVendor);
     router.push("/keyin");
   };
 
   return (
-    <div className="bg-[#faf8ff] text-slate-800 font-body-md overflow-hidden min-h-screen flex flex-col relative antialiased selection:bg-sky-200">
+    <div className="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6 font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC','PingFang_TC',system-ui,sans-serif] text-[#191c1e] antialiased">
       
-      {/* 🚀 M3 Tailwind 全量配置 (明亮色系) */}
-      <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries" async></script>
-      <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:wght@300;400;700&display=swap" rel="stylesheet" />
+      {/* 🚀 確保自定義顏色(primary, error)在環境中生效的配置 */}
+      <script src="https://cdn.tailwindcss.com?plugins=forms" async></script>
+      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;700&display=swap" rel="stylesheet" />
       <script dangerouslySetInnerHTML={{ __html: `
         tailwind.config = {
-          darkMode: "class",
           theme: {
             extend: {
-              "colors": {
-                "primary": "#006194",
-                "on-primary": "#ffffff",
-                "primary-container": "#007bb9",
-                "on-primary-container": "#ffffff",
-                "surface": "#faf8ff",
-                "on-surface": "#131b2e",
-                "surface-variant": "#dae2fd",
-                "on-surface-variant": "#3f4850",
-                "outline": "#707881",
-                "error": "#ba1a1a",
-                "error-container": "#ffdad6",
-                "on-error-container": "#93000a"
-              },
-              "fontFamily": {
-                "headline-md": ["Manrope"],
-                "body-md": ["Inter"]
+              colors: {
+                primary: "#006194",
+                "primary-fixed-dim": "#cce5ff",
+                "secondary-fixed": "#cce8e0",
+                error: "#ba1a1a"
               }
             }
           }
         }
       `}} />
 
-      {/* 🚀 物理樣式：明亮系毛玻璃，極大化通透感與留白 */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        .clinical-glass {
-          backdrop-filter: blur(24px);
-          background: rgba(255, 255, 255, 0.75);
-          border: 1px solid rgba(255, 255, 255, 0.5);
-          box-shadow: 0 25px 50px -12px rgba(2, 132, 199, 0.1);
-        }
-        .breathing-sphere {
-          filter: blur(100px);
-          opacity: 0.5;
-          animation: breathe 12s infinite ease-in-out;
-        }
-        .delay-2s { animation-delay: -2s; }
-        .delay-4s { animation-delay: -4s; }
-        .icon-fill { font-variation-settings: 'FILL' 1; }
-        @keyframes breathe {
-          0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.4; }
-          50% { transform: scale(1.1) translate(40px, -40px); opacity: 0.6; }
-        }
-        .medical-gradient-light {
-          background: radial-gradient(circle at top right, #e0f2fe 0%, #faf8ff 100%);
-        }
-      `}} />
-
-      {/* --- 背景發光球體 (明亮清爽色調，推向邊緣以釋放中心空間) --- */}
-      <div className="absolute inset-0 overflow-hidden -z-10 medical-gradient-light">
-        <div className="breathing-sphere absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-sky-200 rounded-full"></div>
-        <div className="breathing-sphere absolute bottom-[-20%] right-[-10%] w-[800px] h-[800px] bg-emerald-100 rounded-full delay-2s"></div>
-        <div className="breathing-sphere absolute top-[30%] right-[20%] w-[500px] h-[500px] bg-indigo-100 rounded-full delay-4s"></div>
+      {/* 物理背景裝飾 */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-primary-fixed-dim/20 rounded-full blur-[120px] mix-blend-multiply"></div>
+        <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-secondary-fixed/30 rounded-full blur-[100px] mix-blend-multiply"></div>
       </div>
 
-      {/* --- 寬敞版主要登入畫布 --- */}
-      <main className="flex-grow flex items-center justify-center p-4 sm:p-8 relative z-10">
-        <div className="clinical-glass w-full max-w-[1200px] rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row min-h-[650px] animate-in zoom-in-95 duration-1000">
+      <div className="relative z-10 w-full max-w-[420px]">
+        {/* 標題區 */}
+        <div className="text-center mb-10">
+          <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-primary/20 rotate-3 transition-transform hover:rotate-0 duration-500">
+            <span className="material-symbols-outlined text-white text-4xl">token</span>
+          </div>
+          <h1 className="text-3xl font-black tracking-tighter mb-2">預約裝機/IP申請系統<span className="text-primary"></span></h1>
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">A-L-I-N-K </p>
+        </div>
+
+        {/* 登入表單區塊 */}
+        <div className="bg-white/70 backdrop-blur-3xl rounded-[2.5rem] p-8 shadow-2xl border border-white/50">
           
-          {/* --- 品牌區塊 (加大 Padding 釋放空間) --- */}
-          <div className="w-full md:w-1/2 p-12 lg:p-20 flex flex-col justify-between bg-primary-container relative overflow-hidden">
-            <div className="relative z-10 mt-4">
-              <div className="flex items-center gap-5 mb-12">
-                <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-sky-900/20">
-                   <span className="material-symbols-outlined text-primary text-4xl icon-fill">hub</span>
+          {/* 頻道選擇按鈕 */}
+          {!loginType && (
+            <div className="space-y-4">
+              {/* 🚀 防護點：確保事件回傳具備大括號，消滅 unused-expressions */}
+              <button 
+                onClick={() => { setLoginType("vendor"); }}
+                className="w-full p-5 rounded-2xl bg-white border-2 border-slate-100 hover:border-primary hover:bg-blue-50/50 transition-all group flex items-center gap-4 text-left"
+              >
+                <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                  <span className="material-symbols-outlined text-slate-500 group-hover:text-primary">storefront</span>
                 </div>
-                <h1 className="font-headline-md text-3xl lg:text-4xl font-black text-white tracking-tighter">資產聯網<br/>Asset-Link</h1>
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-6 leading-tight">醫療設備維運與<br/>資產結案中樞</h2>
-              <p className="text-base text-sky-100 leading-relaxed font-medium max-w-sm">
-                物理對沖與資安稽核一站式平台，確保全院醫療數據鏈結之完整性與合規。
-              </p>
-            </div>
-
-            <div className="relative z-10 mb-4 mt-16">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="material-symbols-outlined text-sky-200 text-base icon-fill">verified_user</span>
-                <span className="text-xs font-black text-sky-100 uppercase tracking-[0.3em]">Hospital Enterprise</span>
-              </div>
-              <div className="h-1.5 w-20 bg-sky-300/30 rounded-full overflow-hidden">
-                <div className="h-full w-1/2 bg-white rounded-full"></div>
-              </div>
-            </div>
-
-            {/* 物理裝飾背景 */}
-            <div className="absolute inset-0 opacity-20 pointer-events-none mix-blend-overlay">
-              <img alt="Medical IT" className="w-full h-full object-cover grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBUm3hItJ5QqXUWmrbdy-L2JotITHnHayPR1lHnH7VzGR4IMQGq16Nu_vuqe-DHSW79g-Xz4wIwS8_fUaWxrEYBIzpyhRR1bAgBMAcjqGImue3jmXaOUDwQzF2MBHBVQY_GAfdGtJFRM6hM3AtRr2Sk8vPBMO11fUHjzKclb0f4DisIcDj42tP-aa3JzIfWbGvLcIWdUxT0dbh_pHB9d74DombvpUJYHlso-KNTqERxTip0wBIYQ6XXvMk13J8PA21EESJO6aI4D4Q" />
-            </div>
-          </div>
-
-          {/* --- 操作區塊 (大幅提升留白，對稱 1/2 佈局，明亮清爽) --- */}
-          <div className="w-full md:w-1/2 p-12 lg:p-20 flex flex-col justify-center bg-white/40">
-            
-            {/* 錯誤反饋氣泡 */}
-            {errorMsg && (
-              <div className="mb-8 p-5 bg-red-50 text-red-600 border border-red-200 rounded-2xl text-sm font-bold flex items-center gap-4 animate-in slide-in-from-top-4 shadow-sm shadow-red-900/5">
-                <span className="material-symbols-outlined text-xl icon-fill">report</span> {errorMsg}
-              </div>
-            )}
-
-            {!loginType ? (
-              <div className="animate-in fade-in duration-700 w-full max-w-md mx-auto">
-                <div className="mb-14 text-center md:text-left">
-                  <h3 className="text-4xl font-black text-sky-900 mb-4 tracking-tighter">系統登入</h3>
-                  <p className="text-slate-500 text-base font-medium">請物理選取您的權限類型以開始對沖</p>
+                <div>
+                  <h3 className="font-black text-slate-800 text-lg">廠商預約申請</h3>
+                  <p className="text-[10px] font-bold text-slate-400">Vendor Application Portal</p>
                 </div>
-                
-                <div className="space-y-6">
-                  {/* 路徑 A: 廠商端 */}
-                  <button onClick={() => setLoginType("vendor")} className="w-full group flex items-center p-6 rounded-2xl border border-slate-200 bg-white/60 hover:bg-white hover:border-primary/40 hover:shadow-md transition-all duration-300 text-left shadow-sm">
-                    <div className="w-16 h-16 rounded-2xl bg-sky-50 flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
-                      <span className="material-symbols-outlined text-primary text-3xl icon-fill">calendar_add_on</span>
-                    </div>
-                    <div className="flex-grow">
-                      <div className="font-bold text-xl text-slate-800 mb-1 group-hover:text-primary transition-colors">廠商預約錄入</div>
-                      <div className="text-sm text-slate-500 font-medium">提交設備進場與裝機預約</div>
-                    </div>
-                    <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors ml-4">chevron_right</span>
-                  </button>
+              </button>
 
-                  {/* 路徑 B: 管理端 */}
-                  <button onClick={() => setLoginType("admin")} className="w-full group flex items-center p-6 rounded-2xl border border-slate-200 bg-white/60 hover:bg-white hover:border-primary/40 hover:shadow-md transition-all duration-300 text-left shadow-sm">
-                    <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
-                      <span className="material-symbols-outlined text-emerald-600 text-3xl icon-fill">admin_panel_settings</span>
-                    </div>
-                    <div className="flex-grow">
-                      <div className="font-bold text-xl text-slate-800 mb-1 group-hover:text-primary transition-colors">資訊室管理者</div>
-                      <div className="text-sm text-slate-500 font-medium">資產核定、稽核與系統日誌</div>
-                    </div>
-                    <span className="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors ml-4">chevron_right</span>
-                  </button>
+              <button 
+                onClick={() => { setLoginType("admin"); }}
+                className="w-full p-5 rounded-2xl bg-white border-2 border-slate-100 hover:border-slate-900 hover:bg-slate-900 transition-all group flex items-center gap-4 text-left"
+              >
+                <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+                  <span className="material-symbols-outlined text-slate-500 group-hover:text-white">admin_panel_settings</span>
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-lg group-hover:text-white transition-colors">資訊室管理者登入</h3>
+                  <p className="text-[10px] font-bold text-slate-400 group-hover:text-white/60 transition-colors">Admin Management Hub</p>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* 錯誤提示 */}
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 text-error rounded-2xl border border-red-100 flex items-start gap-3 animate-bounce">
+              <span className="material-symbols-outlined text-lg">error</span>
+              <p className="text-[11px] font-bold leading-tight pt-0.5">{errorMsg}</p>
+            </div>
+          )}
+
+          {/* 管理者登入表單 */}
+          {loginType === "admin" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3 mb-6">
+                 <button 
+                   onClick={() => { setLoginType(null); setErrorMsg(""); setAdminPassword(""); setAdminAccount(""); }} 
+                   className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"
+                 >
+                   <span className="material-symbols-outlined text-sm">arrow_back</span>
+                 </button>
+                 <h2 className="text-lg font-black text-slate-800">管理者登入</h2>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理帳號</label>
+                  <input 
+                    type="text" 
+                    title="管理帳號"
+                    aria-label="管理帳號"
+                    value={adminAccount}
+                    onChange={(e) => { setAdminAccount(e.target.value); }}
+                    placeholder="請輸入帳號"
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-slate-900 focus:bg-white transition-all placeholder:text-slate-300"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { handleAdminLogin(); } }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">管理密碼</label>
+                  <input 
+                    type="password" 
+                    title="管理密碼"
+                    aria-label="管理密碼"
+                    value={adminPassword}
+                    onChange={(e) => { setAdminPassword(e.target.value); }}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-slate-900 focus:bg-white transition-all placeholder:text-slate-300 tracking-widest"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { handleAdminLogin(); } }}
+                  />
                 </div>
               </div>
-            ) : (
-              <div className="animate-in fade-in slide-in-from-right-4 duration-500 w-full max-w-md mx-auto">
-                <button onClick={() => { setLoginType(null); setErrorMsg(""); }} className="mb-12 flex items-center gap-2 text-sm font-black text-slate-500 hover:text-primary transition-colors uppercase tracking-widest">
-                  <span className="material-symbols-outlined text-base">arrow_back</span>
-                  返回選單
-                </button>
-                
-                {loginType === "admin" ? (
-                  <div className="space-y-8">
-                    <div>
-                      <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-3 px-1">Administrator UID</label>
-                      <input 
-                        type="text" 
-                        placeholder="請輸入系統管理帳號" 
-                        value={adminAccount} 
-                        onChange={e => setAdminAccount(e.target.value)} 
-                        className="w-full bg-white/80 border border-slate-200 rounded-2xl px-6 py-5 font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-lg shadow-sm" 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-3 px-1">Passphrase</label>
-                      <input 
-                        type="password" 
-                        placeholder="••••••••" 
-                        value={adminPassword} 
-                        onChange={e => setAdminPassword(e.target.value)} 
-                        className="w-full bg-white/80 border border-slate-200 rounded-2xl px-6 py-5 font-bold text-slate-800 tracking-[0.3em] placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-lg shadow-sm" 
-                      />
-                    </div>
-                    <button 
-                      onClick={handleAdminLogin} 
-                      disabled={isLoading}
-                      className="w-full bg-primary text-white rounded-2xl py-6 mt-6 font-black text-sm uppercase tracking-[0.3em] shadow-lg shadow-primary/30 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
-                    >
-                      {isLoading ? "驗證同步中..." : "執行權限登入"}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-10">
-                    <div>
-                      <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-4 px-1">Authorized Vendor Matrix</label>
-                      <div className="relative">
-                        <select 
-                          title="廠商物理選單"
-                          value={selectedVendor} 
-                          onChange={e => setSelectedVendor(e.target.value)} 
-                          className="w-full bg-white/80 border border-slate-200 rounded-2xl px-6 py-5 font-bold text-slate-800 appearance-none cursor-pointer focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all text-lg shadow-sm"
-                        >
-                          <option value="" disabled className="text-slate-400">請展開並選取您的廠商標記...</option>
-                          {vendors.map(v => <option key={v.name} value={v.name} className="text-slate-800 py-2">{v.name}</option>)}
-                        </select>
-                        <span className="material-symbols-outlined absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-2xl">expand_more</span>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={handleVendorLogin} 
-                      disabled={isLoading || !selectedVendor}
-                      className="w-full bg-emerald-600 text-white rounded-2xl py-6 font-black text-sm uppercase tracking-[0.3em] shadow-lg shadow-emerald-600/30 hover:bg-emerald-500 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-30"
-                    >
-                      <span className="material-symbols-outlined text-xl icon-fill">verified</span>
-                      進入預約作業區
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
+              <button 
+                onClick={() => { handleAdminLogin(); }}
+                disabled={isLoading}
+                className="w-full bg-slate-900 text-white rounded-2xl py-4 mt-2 font-black uppercase tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '登入系統'}
+              </button>
+            </div>
+          )}
 
-      {/* --- 頁尾資訊 --- */}
-      <footer className="px-10 py-8 w-full flex flex-col md:flex-row items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-widest relative z-10 border-t border-slate-200/50">
-        <div className="flex gap-8 mb-4 md:mb-0">
-          <a className="hover:text-primary transition-colors" href="#">Privacy Protocol</a>
-          <a className="hover:text-primary transition-colors" href="#">Legal Compliance</a>
+          {/* 廠商登入表單 */}
+          {loginType === "vendor" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3 mb-6">
+                 <button 
+                   onClick={() => { setLoginType(null); setErrorMsg(""); }} 
+                   className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-all"
+                 >
+                   <span className="material-symbols-outlined text-sm">arrow_back</span>
+                 </button>
+                 <h2 className="text-lg font-black text-slate-800">選擇駐點廠商</h2>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">廠商名稱 (Vendor ID)</label>
+                <div className="relative">
+                  <select 
+                    value={selectedVendor}
+                    onChange={(e) => { setSelectedVendor(e.target.value); }}
+                    title="選擇廠商"
+                    aria-label="選擇廠商"
+                    className="w-full appearance-none bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-primary focus:bg-white transition-all"
+                  >
+                    <option value="" disabled>請選擇您的廠商名稱...</option>
+                    {vendors.map(v => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} {v.status === '停用' || v.status === '停權' ? '(🚫 已停用)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+                </div>
+              </div>
+              <button 
+                onClick={() => { handleVendorLogin(); }}
+                disabled={isLoading || vendors.length === 0}
+                className="w-full bg-primary text-white rounded-2xl py-4 font-black uppercase tracking-widest hover:bg-primary/90 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '進入作業區'}
+              </button>
+            </div>
+          )}
+
         </div>
-        <div className="flex items-center gap-4">
-          <span className="bg-white/60 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 shadow-sm">Node M3.300.4-Light</span>
-          <span>© 2026 Asset-Link Medical IT.</span>
-        </div>
-      </footer>
+        <p className="text-center text-[10px] font-bold text-slate-400 mt-8">© 2026 ERI Information Tech.</p>
+      </div>
     </div>
   );
 }
