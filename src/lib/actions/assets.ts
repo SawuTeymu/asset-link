@@ -26,7 +26,7 @@ export interface VendorSubmitPayload {
   applicant: string;
   model: string;
   sn: string;
-  original_sn?: string; // 🚀 用於承接廠商重送的舊序號，物理覆蓋
+  original_sn?: string; //  用於承接廠商重送的舊序號，物理覆蓋
   mac1: string;
   mac2: string;
   remark: string;
@@ -35,10 +35,10 @@ export interface VendorSubmitPayload {
 }
 
 /**
- * 🚀 廠商批次提交預約單
+ *  廠商批次提交預約單
  */
 export async function submitAssetBatch(batchData: VendorSubmitPayload[]) {
-  // 🚀 物理防線：廠商「載入修正」重送時，物理刪除被退回的舊紀錄，確保單軌替換
+  //  物理防線：廠商「載入修正」重送時，物理刪除被退回的舊紀錄，確保單軌替換
   for (const d of batchData) {
     if (d.original_sn) {
       await supabase.from("assets").delete().eq("產品序號", d.original_sn);
@@ -69,11 +69,11 @@ export async function submitAssetBatch(batchData: VendorSubmitPayload[]) {
 }
 
 /**
- * 🚀 管理端待辦獲取 (物理過濾退回案件)
+ *  管理端待辦獲取 (物理過濾退回案件)
  */
 export async function getAdminPendingData() {
   noStore();
-  // 🚀 物理修復：只抓取「待核定」，退回案件物理隱藏，等待廠商重送
+  //  物理修復：只抓取「待核定」，退回案件物理隱藏，等待廠商重送
   const { data, error } = await supabase
     .from("assets")
     .select("*")
@@ -101,7 +101,7 @@ export async function getAdminPendingData() {
 }
 
 /**
- * 🚀 廠商端進度獲取 (專屬通道：跨表聯集合併全資料)
+ *  廠商端進度獲取 (專屬通道：跨表聯集合併全資料)
  */
 export async function getVendorProgress(vendor: string) {
   noStore();
@@ -175,7 +175,7 @@ export async function getVendorProgress(vendor: string) {
 }
 
 /**
- * 🚀 IP 衝突深度掃描 (涵蓋待確認區)
+ *  IP 衝突深度掃描 (涵蓋待確認區)
  */
 export async function checkIpConflict(ip: string, isReplace: boolean) {
   noStore();
@@ -185,7 +185,7 @@ export async function checkIpConflict(ip: string, isReplace: boolean) {
   const { data: histData } = await supabase.from("historical_assets").select("使用單位").eq("核定ip", ip.trim()).not("狀態", "ilike", "%已報廢%");
   if (histData && histData.length > 0) return { conflict: true, source: String((histData[0] as unknown as Record<string, unknown>).使用單位) };
 
-  // 2. 🚀 檢查待確認區 (防禦管理員連續核發相同 IP)
+  // 2.  檢查待確認區 (防禦管理員連續核發相同 IP)
   const { data: pendData } = await supabase.from("assets").select("使用單位").eq("核定ip", ip.trim()).eq("狀態", "已核定(待確認)");
   if (pendData && pendData.length > 0) return { conflict: true, source: `[待確認中] ${String((pendData[0] as unknown as Record<string, unknown>).使用單位)}` };
 
@@ -193,7 +193,7 @@ export async function checkIpConflict(ip: string, isReplace: boolean) {
 }
 
 /**
- * 🚀 管理端執行核發 (僅更新狀態，不移表)
+ *  管理端執行核發 (僅更新狀態，不移表)
  */
 export async function approveAsset(sn: string, ip: string, deviceName: string, type: string, mac1: string = "", mac2: string = "") {
   const { error } = await supabase.from("assets").update({
@@ -211,7 +211,7 @@ export async function approveAsset(sn: string, ip: string, deviceName: string, t
 }
 
 /**
- * 🚀 廠商端確認結案 (物理遷移至歷史庫)
+ *  廠商端確認結案 (物理遷移至歷史庫)
  */
 export async function vendorConfirmAsset(sn: string) {
   const { data: assetData, error: fetchErr } = await supabase.from("assets").select("*").eq("產品序號", sn).single();
@@ -259,7 +259,7 @@ export async function vendorConfirmAsset(sn: string) {
 }
 
 /**
- * 🚀 退回案件修正
+ *  退回案件修正
  */
 export async function rejectAsset(sn: string, reason: string) {
   const { error } = await supabase.from("assets").update({
@@ -273,7 +273,7 @@ export async function rejectAsset(sn: string, reason: string) {
 }
 
 /**
- * 🚀 獲取下一組設備名稱流水號
+ *  獲取下一組設備名稱流水號
  */
 export async function getNextSequence(prefix: string) {
   noStore();
@@ -287,7 +287,7 @@ export interface InternalIssuePayload {
 }
 
 /**
- * 🚀 系統管理端內部錄入
+ *  系統管理端內部錄入
  */
 export async function submitInternalIssue(pkg: InternalIssuePayload) {
   const { error } = await supabase.from("assets").insert([{

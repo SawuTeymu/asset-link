@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-// 🚀 物理導入同目錄樣式模組 (確保絕對 0 內聯樣式)
+//  物理導入同目錄樣式模組 (確保絕對 0 內聯樣式)
 import styles from "./keyin.module.css";
 
 /**
@@ -93,7 +93,7 @@ export default function KeyinPage() {
 
     setIsLoading(true);
     try {
-      // 🚀 復原真實資料庫對沖邏輯 (寫入 assets_pending)
+      //  復原真實資料庫對沖邏輯 (寫入 assets_pending)
       const payload = devices.map(d => ({
         "廠商名稱": vendorName,
         "裝機日期": metadata.date,
@@ -112,7 +112,7 @@ export default function KeyinPage() {
 
       // 清空表單並提示成功
       setDevices([{ type: "桌上型電腦", model: "", sn: "", mac: "", ip: "", name: "" }]);
-      showToast("✅ 預約申請已成功送出，請靜候資訊室核准", "success");
+      showToast(" 預約申請已成功送出，請靜候資訊室核准", "success");
       
       // 自動切換到進度追蹤面板
       setActiveTab("progress");
@@ -142,7 +142,7 @@ export default function KeyinPage() {
     <div className={`min-h-screen text-slate-800 font-body-md overflow-x-hidden relative antialiased ${styles.medicalGradient}`}>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-      {/* 🚀 手機版側邊欄遮罩 */}
+      {/*  手機版側邊欄遮罩 */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-[45] md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
       )}
@@ -271,7 +271,7 @@ export default function KeyinPage() {
                       </table>
                     </div>
                     <button onClick={handleSubmit} disabled={isLoading} className="mt-6 w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-blue-900/20 hover:bg-blue-500 active:scale-[0.98] transition-all disabled:opacity-50 flex justify-center items-center gap-2">
-                      {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '🚀 提交預約核准 (Submit)'}
+                      {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : ' 提交預約核准 (Submit)'}
                     </button>
                  </div>
               </section>

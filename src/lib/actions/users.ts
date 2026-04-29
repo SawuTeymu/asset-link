@@ -4,7 +4,7 @@ import { supabase } from "../supabase";
 import { revalidatePath } from "next/cache";
 
 /**
- * 🚀 帳號管理控制中樞
+ *  帳號管理控制中樞
  * 物理職責：負責 profiles 表的增刪改查與狀態切換
  */
 

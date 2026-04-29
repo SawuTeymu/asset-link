@@ -16,7 +16,7 @@ import { unstable_noStore as noStore } from "next/cache";
  */
 
 /**
- * 🚀 1. 獲取可用廠商清單 (getVendorList)
+ *  1. 獲取可用廠商清單 (getVendorList)
  * 職責：專供登入首頁 (page.tsx) 調用。
  * 邏輯：僅回傳「授權啟用開關」為 True 且「行政狀態」非「停用」之廠商。
  */
@@ -34,7 +34,7 @@ export async function getVendorList() {
     return [];
   }
 
-  // 🚀 數據過濾與對映：
+  //  數據過濾與對映：
   // 排除資料庫標記為「停用」的列，並映射為前端慣用的 { name } 格式
   return (data || [])
     .filter((v: any) => v.行政狀態 !== "停用")
@@ -44,7 +44,7 @@ export async function getVendorList() {
 }
 
 /**
- * 🚀 2. 獲取全量廠商明細 (getAllVendors)
+ *  2. 獲取全量廠商明細 (getAllVendors)
  * 職責：管理後台專用，展示所有 7 欄位行政軌道。
  * 證明 0 刪減：包含 ID、建立時間、名稱、窗口、狀態、備註、開關。
  */
@@ -60,7 +60,7 @@ export async function getAllVendors() {
     throw new Error("無法獲取廠商名錄: " + error.message);
   }
 
-  // 🚀 數據對映：將中文回傳轉回前端 UI 預期之英文 Key
+  //  數據對映：將中文回傳轉回前端 UI 預期之英文 Key
   return (data || []).map((v: any) => ({
     id: v.id,                    // 物理 UUID
     name: v.廠商名稱,             // 廠商全銜
@@ -73,7 +73,7 @@ export async function getAllVendors() {
 }
 
 /**
- * 🚀 3. 更新廠商狀態與權限 (updateVendor)
+ *  3. 更新廠商狀態與權限 (updateVendor)
  * 職責：執行行政狀態變更或物理開關切換。
  */
 export async function updateVendor(id: string, updates: { 
@@ -82,7 +82,7 @@ export async function updateVendor(id: string, updates: {
   contact?: string;
   remark?: string;
 }) {
-  // 🚀 物理轉換層：將前端傳入的英文屬性精準轉化為中文資料表欄位
+  //  物理轉換層：將前端傳入的英文屬性精準轉化為中文資料表欄位
   const chineseUpdates: any = {};
   
   if (updates.status !== undefined) chineseUpdates.行政狀態 = updates.status;
@@ -104,7 +104,7 @@ export async function updateVendor(id: string, updates: {
 }
 
 /**
- * 🚀 4. 物理新增廠商授權 (addVendor)
+ *  4. 物理新增廠商授權 (addVendor)
  * 職責：在白名單中新增一家廠商。
  */
 export async function addVendor(v: { name: string; contact?: string; remark?: string }) {
@@ -127,7 +127,7 @@ export async function addVendor(v: { name: string; contact?: string; remark?: st
 }
 
 /**
- * 🚀 5. 物理刪除廠商 (deleteVendor)
+ *  5. 物理刪除廠商 (deleteVendor)
  * 警告：此動作具備物理破壞性，建議優先使用 updateVendor 將其停權。
  */
 export async function deleteVendor(id: string) {

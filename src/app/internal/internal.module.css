@@ -1,4 +1,4 @@
-/* 🚀 Internal 專用物理樣式矩陣 - V300.9 */
+/*  Internal 專用物理樣式矩陣 - V300.9 */
 
 .clinicalBg {
     background: radial-gradient(at 0% 0%, #e0f2fe 0%, transparent 50%), 
@@ -10,7 +10,7 @@
 
 .clinicalGlass {
     background: rgba(255, 255, 255, 0.75);
-    /* 🚀 修復：-webkit- 前綴必須排在標準屬性之前以符合編譯器規範 */
+    /*  修復：-webkit- 前綴必須排在標準屬性之前以符合編譯器規範 */
     -webkit-backdrop-filter: blur(24px);
     backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.5);

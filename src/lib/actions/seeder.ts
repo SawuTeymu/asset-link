@@ -92,7 +92,7 @@ export async function runSystemSeed() {
     
     return { 
       success: true, 
-      message: "✅ 全系統繁體中文數據活化完成，儀表板已同步更新。" 
+      message: " 全系統繁體中文數據活化完成，儀表板已同步更新。" 
     };
 
   } catch (err: unknown) {

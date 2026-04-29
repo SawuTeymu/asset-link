@@ -1,4 +1,4 @@
-/* 🚀 Admin 專用物理樣式矩陣 - V300.6 (相容性修復版) */
+/*  Admin 專用物理樣式矩陣 - V300.6 (相容性修復版) */
 
 .medicalGradient {
     background: radial-gradient(circle at top right, #e0f2fe 0%, #faf8ff 100%);
@@ -7,7 +7,7 @@
 
 .clinicalGlass {
     background: rgba(255, 255, 255, 0.7);
-    /* 🚀 物理修復：-webkit- 前綴必須排在標準屬性之前 */
+    /*  物理修復：-webkit- 前綴必須排在標準屬性之前 */
     -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -39,7 +39,7 @@
     50% { transform: scale(1.15) translate(20px, -20px); opacity: 0.5; }
 }
 
-/* 🚀 物理進度條 (徹底消滅 style={{ width }} 報警) */
+/*  物理進度條 (徹底消滅 style={{ width }} 報警) */
 .progressContainer {
     width: 100%;
     background-color: #f1f5f9;

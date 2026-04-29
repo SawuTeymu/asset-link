@@ -6,7 +6,7 @@
  * ==========================================
  */
 
-// 🏷️ 系統版本資訊
+// 🏷 系統版本資訊
 export const SYSTEM_VERSION = "Asset-Link V0.0 (Flagship Production)";
 
 // 🔑 內部 API 二次驗證金鑰 (用於安全簽章生成)

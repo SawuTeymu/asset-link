@@ -10,7 +10,7 @@
  */
 
 /**
- * 🚀 1. ERI 待辦資產表 (Table: assets)
+ *  1. ERI 待辦資產表 (Table: assets)
  * 對應 assets_rows.sql。
  * 包含行政退回原因與備註雙軌道，用於處理新申請與退回件。
  */
@@ -56,7 +56,7 @@ export interface AssetEntry {
 }
 
 /**
- * 🚀 2. 歷史結案大數據表 (Table: historical_assets)
+ *  2. 歷史結案大數據表 (Table: historical_assets)
  * 對應 historical_assets_rows.sql。
  * 針對數萬筆匯入資料優化，包含數據匯入時間與同步來源標記。
  */
@@ -100,7 +100,7 @@ export interface HistoricalAssetEntry {
 }
 
 /**
- * 🚀 3. NSR 網點需求紀錄表 (Table: nsr_records)
+ *  3. NSR 網點需求紀錄表 (Table: nsr_records)
  * 對應 nsr_records_rows.sql。
  * 包含 115 年度合約計價所需的所有 17 欄物理軌道。
  */
@@ -142,7 +142,7 @@ export interface NsrEntry {
 }
 
 /**
- * 🚀 4. 授權廠商名錄表 (Table: vendors)
+ *  4. 授權廠商名錄表 (Table: vendors)
  * 對應 vendors_rows.sql。
  * 驅動首頁白名單與後台權限控管。
  */
@@ -164,7 +164,7 @@ export interface VendorEntry {
 }
 
 /**
- * 🚀 5. 系統審計日誌表 (Table: system_logs)
+ *  5. 系統審計日誌表 (Table: system_logs)
  * 負責記錄管理員與系統自動對沖的物理軌跡。
  */
 export interface LogEntry {

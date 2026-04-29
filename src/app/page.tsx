@@ -78,7 +78,7 @@ export default function LoginPage() {
       sessionStorage.setItem("asset_link_admin_auth", "true");
       router.push("/admin");
     } else {
-      setErrorMsg("🚫 登入拒絕：帳號或密碼驗證失敗，請重新確認。");
+      setErrorMsg(" 登入拒絕：帳號或密碼驗證失敗，請重新確認。");
       setIsLoading(false);
     }
   };
@@ -92,7 +92,7 @@ export default function LoginPage() {
     }
     const vendorData = vendors.find(v => v.name === selectedVendor);
     if (vendorData?.status === '停權' || vendorData?.status === '停用') {
-       setErrorMsg("⚠️ 授權異常：此廠商帳號已暫停使用，請聯繫資訊中心確認。");
+       setErrorMsg(" 授權異常：此廠商帳號已暫停使用，請聯繫資訊中心確認。");
        return;
     }
 
@@ -104,7 +104,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6 font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC','PingFang_TC',system-ui,sans-serif] text-[#191c1e] antialiased">
       
-      {/* 🚀 物理拔除了 Tailwind CDN，僅保留 Google Material Symbols 字體，確保效能與無報警 */}
+      {/*  物理拔除了 Tailwind CDN，僅保留 Google Material Symbols 字體，確保效能與無報警 */}
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;700&display=swap" rel="stylesheet" />
 
       {/* 物理背景裝飾 */}
@@ -119,7 +119,7 @@ export default function LoginPage() {
           <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-primary/20 rotate-3 transition-transform hover:rotate-0 duration-500">
             <span className="material-symbols-outlined text-white text-4xl">token</span>
           </div>
-          {/* 🚀 改為最標準且順耳的「系統」 */}
+          {/*  改為最標準且順耳的「系統」 */}
           <h1 className="text-2xl font-black tracking-tight mb-2">ALink 設備裝機與網路申請系統<span className="text-primary"></span></h1>
           <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">ASSET-LINK PORTAL</p>
         </div>
@@ -211,7 +211,7 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full bg-slate-900 text-white rounded-2xl py-4 mt-2 font-black tracking-widest hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '✨ 驗證並登入'}
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : ' 驗證並登入'}
               </button>
             </div>
           )}
@@ -236,13 +236,13 @@ export default function LoginPage() {
                     onChange={(e) => { setSelectedVendor(e.target.value); }}
                     title="選擇廠商"
                     aria-label="選擇廠商"
-                    /* 🚀 物理修復：加入 bg-none 消滅重疊的預設箭頭，並加入 pr-12 防止文字重疊 */
+                    /*  物理修復：加入 bg-none 消滅重疊的預設箭頭，並加入 pr-12 防止文字重疊 */
                     className="w-full appearance-none bg-none pr-12 bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 font-bold text-slate-700 outline-none focus:border-primary focus:bg-white transition-all"
                   >
                     <option value="" disabled>請下拉選取您的所屬單位...</option>
                     {vendors.map(v => (
                       <option key={v.name} value={v.name}>
-                        {v.name} {v.status === '停用' || v.status === '停權' ? '(🚫 授權暫停)' : ''}
+                        {v.name} {v.status === '停用' || v.status === '停權' ? '( 授權暫停)' : ''}
                       </option>
                     ))}
                   </select>
@@ -254,7 +254,7 @@ export default function LoginPage() {
                 disabled={isLoading || vendors.length === 0}
                 className="w-full bg-primary text-white rounded-2xl py-4 font-black tracking-widest hover:bg-primary/90 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : '🚀 進入作業區'}
+                {isLoading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : ' 進入作業區'}
               </button>
             </div>
           )}

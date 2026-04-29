@@ -15,14 +15,14 @@ import { SYSTEM_VERSION } from "../constants";
  */
 
 /**
- * 🚀 核心函式：logAction
+ *  核心函式：logAction
  * 職責：物理記錄每一次關鍵動作至「system_logs」分頁。
  * @param user - 操作者身分標記 (Email 或 ID)
  * @param action - 詳細動作內容描述
  */
 export async function logAction(user: string, action: string) {
   try {
-    // 🚀 執行數據落地：對沖更名後的 system_logs 表格
+    //  執行數據落地：對沖更名後的 system_logs 表格
     // 欄位物理對位關係：
     // - 操作人身分 <-> operator
     // - 執行動作描述 <-> action

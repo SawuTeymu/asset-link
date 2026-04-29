@@ -20,7 +20,7 @@ import { supabase } from "@/lib/supabase";
  * @param includePending 是否包含待核定池
  */
 export const checkIpConflict = async (ip: string, includePending = false) => {
-  // 🚀 修復 TS2339 ParserError: 改用 select("*") 繞過中文欄位解析錯誤
+  //  修復 TS2339 ParserError: 改用 select("*") 繞過中文欄位解析錯誤
   const { data: archive } = await supabase
     .from("assets_archive")
     .select("*")
@@ -180,11 +180,11 @@ export const getDashboardStats = async () => {
 };
 
 export const getIpUsageStats = async () => {
-  // 🚀 修復 TS2339 ParserError: 改用 select("*")
+  //  修復 TS2339 ParserError: 改用 select("*")
   const { data } = await supabase.from("assets_archive").select("*");
   const segments = ["10.128", "10.130", "10.142", "192.168"];
   const stats = segments.map(s => {
-    // 🚀 加上 (d: any) 型別斷言，確保 TypeScript 不再干涉動態中文鍵值
+    //  加上 (d: any) 型別斷言，確保 TypeScript 不再干涉動態中文鍵值
     const count = data?.filter((d: any) => String(d.核定ip).startsWith(s)).length || 0;
     return { segment: s, count, percent: Math.min(Math.floor((count / 254) * 100), 100) };
   });

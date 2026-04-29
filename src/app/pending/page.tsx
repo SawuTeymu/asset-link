@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { approveAsset, rejectAsset } from "@/lib/actions/assets";
 
-// 🚀 物理導入同目錄樣式模組
+//  物理導入同目錄樣式模組
 import styles from "./pending.module.css";
 
 /**

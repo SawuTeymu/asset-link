@@ -11,7 +11,7 @@ import { logAction } from "./auth";
  */
 
 /**
- * 🚀 1. 執行全系統物理完整性診斷 (checkSystemIntegrity)
+ *  1. 執行全系統物理完整性診斷 (checkSystemIntegrity)
  * 職責：透過 Promise.all 併發執行輕量級筆數查詢 (head: true)，獲取核心資料表狀態。
  */
 export async function checkSystemIntegrity() {
@@ -42,7 +42,7 @@ export async function checkSystemIntegrity() {
 }
 
 /**
- * 🚀 2. 驗證資料表架構對齊狀況 (checkSchemaAlignment)
+ *  2. 驗證資料表架構對齊狀況 (checkSchemaAlignment)
  * 職責：檢查 historical_assets 表中是否存在「行政備註」關鍵中文欄位，
  * 用以判定資料庫是否已完成繁體中文化重構。
  */

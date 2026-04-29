@@ -18,7 +18,7 @@ import { revalidatePath } from "next/cache";
  */
 
 /**
- * 🚀 核心進入點：runGlobalSync
+ *  核心進入點：runGlobalSync
  * 職責：執行全院資產數據大一統任務
  * @param webHisRaw - 來自 WebHis 的行政屬性陣列 [IP, 設備名, MAC, 單位, 院區, 樓層]
  * @param vansRaw - 來自 VANS 的物理屬性陣列 [IP, 電腦名, MAC, 序號]
@@ -84,7 +84,7 @@ export async function runGlobalSync(webHisRaw: any[], vansRaw: any[]) {
       const target = finalRecords.find(rec => rec.核定ip === ip);
       
       if (target) {
-        // 🚀 物理規則對沖：產品序號強制大寫並截取 12 位元
+        //  物理規則對沖：產品序號強制大寫並截取 12 位元
         if (r[3]) {
           const cleanSn = String(r[3]).replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
           target.產品序號 = cleanSn.slice(0, 12);
@@ -133,7 +133,7 @@ export async function runGlobalSync(webHisRaw: any[], vansRaw: any[]) {
     return { 
       success: true, 
       total: successCount, 
-      message: `✅ 同步完成！共對沖 ${successCount} 筆資產。` 
+      message: ` 同步完成！共對沖 ${successCount} 筆資產。` 
     };
 
   } catch (err: unknown) {

@@ -17,7 +17,7 @@ const config = {
       },
     },
   },
-  // 🚀 啟用 forms 與 container-queries 插件 (對應原本 CDN 上的 ?plugins=forms)
+  //  啟用 forms 與 container-queries 插件 (對應原本 CDN 上的 ?plugins=forms)
   plugins: [
     require('@tailwindcss/forms'),
     require('@tailwindcss/container-queries')

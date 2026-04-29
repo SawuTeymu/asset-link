@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-// --- 🚀 引入正確的後端 Server Actions (消滅 adminerror.txt 錯置報警) ---
+// ---  引入正確的後端 Server Actions (消滅 adminerror.txt 錯置報警) ---
 import { 
   getDashboardStats, 
   getIpUsageStats, 
@@ -14,11 +14,11 @@ import {
 import { getNsrList } from "@/lib/actions/nsr";
 import { getAllUsers } from "@/lib/actions/users";
 
-// --- 🚀 圖表引擎 (Chart.js) ---
+// ---  圖表引擎 (Chart.js) ---
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
-// 🚀 物理導入同目錄樣式模組
+//  物理導入同目錄樣式模組
 import styles from "./admin.module.css";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
@@ -132,7 +132,7 @@ export default function AdminDashboard() {
         zombies: vansMetrics.zombieAlertCount,
         conflict_data: vansConflicts
       }]);
-      showToast("✅ 資安稽核歷史已持久化存檔", "success");
+      showToast(" 資安稽核歷史已持久化存檔", "success");
       syncCoreData();
     } finally { setIsSaving(false); }
   };
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
     <div className={`min-h-screen font-body-md text-slate-800 antialiased flex relative overflow-hidden ${styles.medicalGradient}`}>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
       
-      {/* 🚀 背景動態球體 (物理脫離) */}
+      {/*  背景動態球體 (物理脫離) */}
       <div className="absolute inset-0 overflow-hidden -z-10 pointer-events-none">
         <div className={`absolute top-[-10%] left-[-5%] w-[500px] h-[500px] bg-sky-100 rounded-full ${styles.breathingSphere}`}></div>
         <div className={`absolute bottom-[-15%] right-[-5%] w-[600px] h-[600px] bg-emerald-100 rounded-full ${styles.breathingSphere} ${styles.delay2s}`}></div>
@@ -195,7 +195,7 @@ export default function AdminDashboard() {
                 <div className={`${styles.clinicalGlass} p-6 rounded-3xl shadow-sm border-l-4 border-amber-400`}><p className="text-xs font-bold text-slate-500 mb-1 uppercase tracking-widest">Pending ERI</p><h3 className="text-3xl font-black text-slate-800">{stats.pending} <span className="text-sm font-normal text-slate-400">件</span></h3></div>
                 <div className={`${styles.clinicalGlass} p-6 rounded-3xl shadow-sm border-l-4 border-blue-500`}><p className="text-xs font-bold text-slate-500 mb-1 uppercase tracking-widest">Total Assets</p><h3 className="text-3xl font-black text-slate-800">{stats.done.toLocaleString()}</h3></div>
                 
-                {/* 🚀 物理對沖，完全移除 style 屬性，改用 ID 選擇器與內嵌樣式 */}
+                {/*  物理對沖，完全移除 style 屬性，改用 ID 選擇器與內嵌樣式 */}
                 <div className={`${styles.clinicalGlass} p-6 rounded-3xl shadow-sm border-l-4 border-indigo-500`}>
                   <p className="text-xs font-bold text-slate-500 mb-1 uppercase tracking-widest">IP Load Peak</p>
                   <h3 className="text-3xl font-black text-slate-800">{maxIpPercent}%</h3>
@@ -254,7 +254,7 @@ export default function AdminDashboard() {
                     </thead>
                     <tbody className="divide-y divide-slate-100/50">
                       {vansConflicts.map((c, i) => (<tr key={i} className="hover:bg-white/40 transition-colors"><td className="p-5"><span className={`px-3 py-1.5 rounded-lg font-black tracking-widest ${c.type==='MAC_ERROR'?'bg-red-100 text-red-700 border border-red-200':'bg-amber-100 text-amber-700 border border-amber-200'}`}>{c.type}</span></td><td className="p-5 text-blue-600 font-black text-sm">{c.ip}</td><td className="p-5 font-bold text-slate-500 text-right">{c.desc}</td></tr>))}
-                      {vansConflicts.length === 0 && <tr><td colSpan={3} className="p-10 text-center text-slate-400 font-bold">🎉 VANS 對沖完成，未發現任何 IP 或 MAC 異常衝突！</td></tr>}
+                      {vansConflicts.length === 0 && <tr><td colSpan={3} className="p-10 text-center text-slate-400 font-bold"> VANS 對沖完成，未發現任何 IP 或 MAC 異常衝突！</td></tr>}
                     </tbody>
                   </table>
                 </div>

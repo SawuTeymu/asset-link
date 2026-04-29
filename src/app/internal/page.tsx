@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { checkIpConflict, submitInternalIssue } from "@/lib/actions/assets";
 import { formatFloor } from "@/lib/logic/formatters";
 
-// 🚀 物理導入同目錄樣式模組 (確保絕對 0 內聯樣式)
+//  物理導入同目錄樣式模組 (確保絕對 0 內聯樣式)
 import styles from "./internal.module.css";
 
 /**
@@ -22,7 +22,7 @@ import styles from "./internal.module.css";
 export default function InternalPage() {
   const router = useRouter();
 
-  // 🚀 手機版動態側邊欄狀態
+  //  手機版動態側邊欄狀態
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // --- 1. 核心數據狀態 (100% 完整保留) ---
@@ -85,7 +85,7 @@ export default function InternalPage() {
     if (!formData.unit || !formData.sn || !formData.ip) return showToast("行政資訊不完整：單位、序號與 IP 為必填", "error");
     setIsLoading(true);
     try {
-      // 🚀 最終物理型別對沖方案：採用 as any 繞過不穩定的型別定義
+      //  最終物理型別對沖方案：採用 as any 繞過不穩定的型別定義
       const payload: any = {
         installDate: formData.date, 
         area: formData.area, 
@@ -117,10 +117,10 @@ export default function InternalPage() {
       
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-      {/* 🚀 物理脫離樣式呼叫 */}
+      {/*  物理脫離樣式呼叫 */}
       <div className={`${styles.clinicalBg} absolute inset-0 -z-10 pointer-events-none`}></div>
 
-      {/* 🚀 手機版遮罩 */}
+      {/*  手機版遮罩 */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-[45] md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
       )}
@@ -195,7 +195,7 @@ export default function InternalPage() {
             {/* --- Left Column: Admin & Calendar --- */}
             <div className="col-span-1 lg:col-span-7 flex flex-col gap-6">
               
-              {/* 🚀 行政元數據 (RWD 格狀系統) */}
+              {/*  行政元數據 (RWD 格狀系統) */}
               <div className={`${styles.clinicalGlass} rounded-2xl p-5 md:p-6 shadow-sm`}>
                   <div className="flex justify-between items-center mb-6">
                     <h4 className="text-lg font-bold text-sky-800">行政元數據 (Metadata)</h4>
@@ -236,7 +236,7 @@ export default function InternalPage() {
                   </div>
               </div>
 
-              {/* 🚀 Physical Calendar Component */}
+              {/*  Physical Calendar Component */}
               <div className={`${styles.clinicalGlass} rounded-2xl overflow-hidden shadow-sm`}>
                 <div className="p-5 md:p-6 border-b border-slate-200 bg-white/40 flex items-center justify-between">
                   <div>

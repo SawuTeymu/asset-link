@@ -12,7 +12,7 @@ import {
 import { formatFloor } from "@/lib/logic/formatters";
 import { calculateNsrPrice } from "@/lib/logic/pricing";
 
-// 🚀 物理導入同目錄樣式模組
+//  物理導入同目錄樣式模組
 import styles from "./nsr.module.css";
 
 /**
@@ -136,7 +136,7 @@ export default function NsrPage() {
     try {
       const remark = `[115年度合約對沖] 加成施工:${settleModal.isAddon ? '是' : '否'}, 面板擴充:${settleModal.usePanel ? '是' : '否'}, 核銷總額: NT$ ${settleModal.total.toLocaleString()}`;
       await settleNsrRecord({ form_id: settleModal.record.id, isAddon: settleModal.isAddon, usePanel: settleModal.usePanel, finishRemark: remark });
-      showToast("✅ 結算成功，已歸檔為待請款", "success");
+      showToast(" 結算成功，已歸檔為待請款", "success");
       setSettleModal({ isOpen: false, record: null, isAddon: false, usePanel: false, total: 0 });
       fetchNsrList();
     } catch (err) { showToast("結算對沖失敗", "error"); } 

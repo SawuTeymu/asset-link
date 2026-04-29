@@ -25,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="zh-TW">
       <head>
-        {/* 🚀 物理注入 Google Material Symbols (全系統 Icons 唯一來源) */}
+        {/*  物理注入 Google Material Symbols (全系統 Icons 唯一來源) */}
         {/* 使用 display=block 確保圖示在載入期間不會造成排版抖動 */}
         <link 
           rel="stylesheet" 

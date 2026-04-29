@@ -14,7 +14,7 @@ import { unstable_noStore as noStore } from "next/cache";
  * ==========================================
  */
 
-// 🚀 定義歷史資產強型別 (消除 r: any)
+//  定義歷史資產強型別 (消除 r: any)
 interface HistAssetDbRow {
   id?: string;
   數據匯入時間?: string;
@@ -40,7 +40,7 @@ export async function getHistoryPaged(page: number = 1, pageSize: number = 50, q
   try {
     let request = supabase.from("historical_assets").select("*", { count: "exact" });
 
-    // 🚀 多維度中文模糊搜尋
+    //  多維度中文模糊搜尋
     if (query && query.trim() !== "") {
       const q = query.trim();
       // 在中文標籤中執行 ilike 對位
@@ -53,10 +53,10 @@ export async function getHistoryPaged(page: number = 1, pageSize: number = 50, q
 
     if (error) throw error;
 
-    // 🚀 透過 unknown 雙重轉型繞過 Supabase 型別推斷錯誤，確保型別安全
+    //  透過 unknown 雙重轉型繞過 Supabase 型別推斷錯誤，確保型別安全
     const typedData = data as unknown as HistAssetDbRow[] | null;
 
-    // 🚀 執行 100% 無損映射
+    //  執行 100% 無損映射
     const mappedData = (typedData || []).map((r) => ({
       id: r.id,
       form_id: r.結案單號,
@@ -80,7 +80,7 @@ export async function getHistoryPaged(page: number = 1, pageSize: number = 50, q
       currentPage: page,
       totalPages: Math.ceil((count || 0) / pageSize)
     };
-  } catch (err: unknown) { // 🚀 消除 err: any 報錯
+  } catch (err: unknown) { //  消除 err: any 報錯
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("【歷史分頁引擎失敗】:", errorMsg);
     throw new Error("數據檢索鏈路中斷: " + errorMsg);

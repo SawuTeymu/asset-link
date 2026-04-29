@@ -104,7 +104,7 @@ export async function getIpUsageStats() {
 export async function getHistoryRecords() {
   noStore();
   try {
-    // 🚀 物理修復：移除 .limit(10)，釋放全量數據傳輸通道供 Admin 前端分頁器使用
+    //  物理修復：移除 .limit(10)，釋放全量數據傳輸通道供 Admin 前端分頁器使用
     const { data, error } = await supabase
       .from("historical_assets")
       .select("*")

@@ -15,7 +15,7 @@ import { unstable_noStore as noStore } from "next/cache";
  * ==========================================
  */
 
-// 🚀 定義待辦資產強型別 (消除 mapAssetToEnglish 的 any)
+//  定義待辦資產強型別 (消除 mapAssetToEnglish 的 any)
 interface AssetDbRow {
   id?: string;
   建立時間?: string;
@@ -38,7 +38,7 @@ interface AssetDbRow {
   備註: string;
 }
 
-// 🚀 定義歷史資產強型別 (消除 mapHistAssetToEnglish 的 any)
+//  定義歷史資產強型別 (消除 mapHistAssetToEnglish 的 any)
 interface HistAssetDbRow {
   id?: string;
   數據匯入時間?: string;
@@ -60,7 +60,7 @@ interface HistAssetDbRow {
   同步來源: string;
 }
 
-// 🚀 定義 IP 矩陣強型別 (解決 ParserError 缺失屬性)
+//  定義 IP 矩陣強型別 (解決 ParserError 缺失屬性)
 interface IpMatrixRow {
   使用單位: string;
   核定ip: string;
@@ -68,7 +68,7 @@ interface IpMatrixRow {
 }
 
 /**
- * 🚀 1. 物理映射適配器：待辦資產表 (Asset Adapter)
+ *  1. 物理映射適配器：待辦資產表 (Asset Adapter)
  */
 export function mapAssetToEnglish(r: AssetDbRow) {
   if (!r) return null;
@@ -96,7 +96,7 @@ export function mapAssetToEnglish(r: AssetDbRow) {
 }
 
 /**
- * 🚀 2. 物理映射適配器：歷史大數據表 (History Adapter)
+ *  2. 物理映射適配器：歷史大數據表 (History Adapter)
  */
 export function mapHistAssetToEnglish(r: HistAssetDbRow) {
   if (!r) return null;
@@ -123,7 +123,7 @@ export function mapHistAssetToEnglish(r: HistAssetDbRow) {
 }
 
 /**
- * 🚀 3. 跨表大一統搜尋 (searchAllAssets)
+ *  3. 跨表大一統搜尋 (searchAllAssets)
  */
 export async function searchAllAssets(query: string) {
   noStore();
@@ -161,7 +161,7 @@ export async function searchAllAssets(query: string) {
 }
 
 /**
- * 🚀 4. 精準序號定位 (fetchAssetBySn)
+ *  4. 精準序號定位 (fetchAssetBySn)
  */
 export async function fetchAssetBySn(sn: string) {
   noStore();
@@ -178,7 +178,7 @@ export async function fetchAssetBySn(sn: string) {
 }
 
 /**
- * 🚀 5. 全院 IP 使用率對沖清單 (fetchIpMatrix)
+ *  5. 全院 IP 使用率對沖清單 (fetchIpMatrix)
  */
 export async function fetchIpMatrix() {
   noStore();
@@ -189,7 +189,7 @@ export async function fetchIpMatrix() {
 
   if (error) throw new Error("IP 矩陣對沖中斷");
   
-  // 🚀 透過雙重轉型解決 TS2339 Supabase ParserError
+  //  透過雙重轉型解決 TS2339 Supabase ParserError
   const typedData = data as unknown as IpMatrixRow[] | null;
   
   return (typedData || []).map(r => ({
