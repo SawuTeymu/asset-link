@@ -1,15 +1,13 @@
-/* 🚀 Pending 專用物理樣式矩陣 - V300.9 */
+/* 🚀 Pending 專用物理樣式矩陣 - V300.4 */
 
 .bgGradientCustom {
-    background: radial-gradient(at 0% 0%, #e0f2fe 0%, transparent 50%), 
-                radial-gradient(at 100% 100%, #cce5ff 0%, transparent 50%), 
-                #faf8ff;
+    background: radial-gradient(at 0% 0%, #e0f2fe 0%, transparent 50%), radial-gradient(at 100% 100%, #cce5ff 0%, transparent 50%), #faf8ff;
     background-attachment: fixed;
 }
 
 .clinicalGlass {
     background: rgba(255, 255, 255, 0.7);
-    /* 🚀 修復：-webkit- 前綴必須排在標準屬性之前以符合編譯器規範 */
+    /* 🚀 遵循 css-prefix-order 兼容性規範 */
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.4);

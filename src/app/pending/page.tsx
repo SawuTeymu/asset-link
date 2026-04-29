@@ -5,14 +5,17 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { approveAsset, rejectAsset } from "@/lib/actions/assets";
 
+// 🚀 物理導入同目錄樣式模組 (確保絕對 0 內聯樣式)
+import styles from "./pending.module.css";
+
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V300.4 Medical M3 (RWD 手機模式完美版)
+ * 狀態：V300.5 Medical M3 (全功能對沖 + 零內聯樣式純淨版)
  * 物理職責：
  * 1. 響應式升級：Bento Grid RWD 適配 (1欄 -> 2欄 -> 3欄)，動態側邊欄遮罩。
  * 2. 邏輯 0 刪除：保留 ERI 簽核對正 4 引數、Session 驗證與退回邏輯。
- * 3. 語法對正：修復 class -> className，隨機 ID 對位防止 Axe 衝突。
+ * 3. 絕對樣式脫離：拔除所有 <style> 標籤與 Tailwind CDN，確保生產環境 0 報警。
  * ==========================================
  */
 
@@ -74,14 +77,10 @@ export default function PendingPage() {
   return (
     <div className="bg-[#faf8ff] text-slate-800 font-body-md antialiased min-h-screen flex relative overflow-x-hidden">
       
-      <style dangerouslySetInnerHTML={{ __html: `
-        .clinical-glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 4px 20px rgba(0,0,0,0.03); }
-        .inner-glow { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5); }
-        .bg-gradient-custom { background: radial-gradient(at 0% 0%, #e0f2fe 0%, transparent 50%), radial-gradient(at 100% 100%, #cce5ff 0%, transparent 50%), #faf8ff; background-attachment: fixed; }
-        .icon-fill { font-variation-settings: 'FILL' 1; }
-      `}} />
+      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-      <div className="bg-gradient-custom min-h-screen w-full fixed inset-0 -z-10"></div>
+      {/* 🚀 物理脫離背景呼叫 */}
+      <div className={`${styles.bgGradientCustom} min-h-screen w-full fixed inset-0 -z-10`}></div>
 
       {/* 🚀 手機版遮罩 */}
       {isMobileMenuOpen && (
@@ -93,7 +92,7 @@ export default function PendingPage() {
           <div className="flex items-center justify-between mb-8 px-2">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                <span className="material-symbols-outlined icon-fill">medical_services</span>
+                <span className={`material-symbols-outlined ${styles.iconFill}`}>medical_services</span>
               </div>
               <div>
                 <h2 className="text-lg font-black text-sky-800 leading-tight">ERI 行政</h2>
@@ -112,7 +111,7 @@ export default function PendingPage() {
                 <span className="material-symbols-outlined">dashboard</span> 首頁儀表板
               </button>
               <button className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 text-white rounded-lg shadow-md font-bold">
-                <span className="material-symbols-outlined icon-fill">grid_view</span> 待核定矩陣
+                <span className={`material-symbols-outlined ${styles.iconFill}`}>grid_view</span> 待核定矩陣
               </button>
               <button onClick={() => router.push("/nsr")} className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/40 rounded-lg font-bold transition-all">
                 <span className="material-symbols-outlined">payments</span> 網點財務對沖
@@ -157,7 +156,7 @@ export default function PendingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-in slide-in-from-bottom-8 duration-1000">
              
              {/* 核心統計卡片 */}
-             <div className="clinical-glass rounded-2xl p-6 inner-glow relative shadow-sm col-span-1 sm:col-span-2 lg:col-span-1">
+             <div className={`${styles.clinicalGlass} ${styles.innerGlow} rounded-2xl p-6 relative shadow-sm col-span-1 sm:col-span-2 lg:col-span-1`}>
                 <div className="absolute -right-8 -top-8 w-32 h-32 bg-blue-100/50 rounded-full blur-2xl"></div>
                 <div className="relative z-10 space-y-4">
                   <h3 className="font-bold text-sky-900 mb-4">狀態實時統計</h3>
@@ -171,13 +170,13 @@ export default function PendingPage() {
 
              {/* 動態渲染待核定案件 */}
              {pendingList.length === 0 ? (
-                <div className="sm:col-span-2 clinical-glass rounded-2xl p-12 flex flex-col items-center justify-center text-slate-400 border-dashed border-2">
+                <div className={`sm:col-span-2 ${styles.clinicalGlass} rounded-2xl p-12 flex flex-col items-center justify-center text-slate-400 border-dashed border-2`}>
                     <span className="material-symbols-outlined text-5xl mb-4 text-emerald-400">task_alt</span>
                     <p className="font-bold text-slate-600">目前無待核定資產，系統已淨空</p>
                 </div>
              ) : (
                 pendingList.map((item, idx) => (
-                  <div key={`eri-${item.id}`} className="clinical-glass rounded-2xl p-5 md:p-6 inner-glow flex flex-col justify-between hover:shadow-xl transition-all hover:-translate-y-1 bg-white/40 group">
+                  <div key={`eri-${item.id}`} className={`${styles.clinicalGlass} ${styles.innerGlow} rounded-2xl p-5 md:p-6 flex flex-col justify-between hover:shadow-xl transition-all hover:-translate-y-1 bg-white/40 group`}>
                     <div className="space-y-4 md:space-y-5">
                       <div className="flex justify-between items-start">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${idx === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
@@ -211,7 +210,7 @@ export default function PendingPage() {
                         onClick={() => handleApprove(item)}
                         className="flex-[2] py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs shadow-md hover:bg-emerald-500 active:scale-95 transition-all flex items-center justify-center gap-1"
                       >
-                        <span className="material-symbols-outlined text-sm icon-fill">verified</span>
+                        <span className={`material-symbols-outlined text-sm ${styles.iconFill}`}>verified</span>
                         核定結案
                       </button>
                     </div>
@@ -234,7 +233,7 @@ export default function PendingPage() {
       <div className="fixed bottom-6 right-4 md:bottom-10 md:right-8 z-[7000] flex flex-col gap-3">
         {toasts.map(t => (
           <div key={t.id} className={`px-4 md:px-6 py-3 rounded-xl shadow-lg font-bold text-xs animate-in slide-in-from-right-4 flex items-center gap-2 border ${t.type === "success" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
-            <span className="material-symbols-outlined text-base icon-fill">{t.type === 'success' ? 'check_circle' : 'error'}</span>
+            <span className={`material-symbols-outlined text-base ${styles.iconFill}`}>{t.type === 'success' ? 'check_circle' : 'error'}</span>
             <span className="tracking-wide">{t.msg}</span>
           </div>
         ))}

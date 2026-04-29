@@ -1,0 +1,38 @@
+/* 🚀 Keyin 專用物理樣式矩陣 - V300.8 */
+
+.medicalGradient {
+    background: radial-gradient(circle at top left, #f0fdf4 0%, #faf8ff 50%, #eef6ff 100%);
+    min-height: 100vh;
+}
+
+.clinicalGlass {
+    background: rgba(255, 255, 255, 0.75);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 4px 20px rgba(0, 97, 148, 0.05);
+}
+
+.crystalInput {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(203, 213, 225, 0.8);
+    border-radius: 0.5rem;
+    padding: 12px 16px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease-in-out;
+}
+
+.crystalInput:focus {
+    border-color: #006194;
+    box-shadow: 0 0 0 2px rgba(0, 97, 148, 0.2);
+    background: #ffffff;
+}
+
+.zebraGlass tr:nth-child(even) { background: rgba(0, 97, 148, 0.02); }
+.zebraGlass tr:nth-child(odd) { background: transparent; }
+
+.iconFill {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}

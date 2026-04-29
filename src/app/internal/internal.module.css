@@ -1,0 +1,41 @@
+/* 🚀 Internal 專用物理樣式矩陣 - V300.9 */
+
+.clinicalBg {
+    background: radial-gradient(at 0% 0%, #e0f2fe 0%, transparent 50%), 
+                radial-gradient(at 100% 0%, #f0fdf4 0%, transparent 50%), 
+                radial-gradient(at 100% 100%, #eef2ff 0%, transparent 50%);
+    background-color: #faf8ff;
+    background-attachment: fixed;
+}
+
+.clinicalGlass {
+    background: rgba(255, 255, 255, 0.75);
+    /* 🚀 修復：-webkit- 前綴必須排在標準屬性之前以符合編譯器規範 */
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.crystalInput {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(203, 213, 225, 0.8);
+    border-radius: 0.5rem;
+    padding: 12px 16px;
+    font-size: 14px;
+    transition: all 0.3s;
+    outline: none;
+}
+
+.crystalInput:focus {
+    border-color: #006194;
+    box-shadow: 0 0 0 2px rgba(0, 97, 148, 0.2);
+}
+
+.iconFill {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.zebraGlass tr:nth-child(even) {
+    background: rgba(0, 0, 0, 0.02);
+}
