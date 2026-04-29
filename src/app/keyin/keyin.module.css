@@ -1,4 +1,3 @@
-```css
 /* 🚀 Keyin 專用物理樣式矩陣 - V300.15 (Safari 相容與 0 簡化版) */
 
 .medicalGradient {
@@ -63,5 +62,3 @@
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
 }
-
-```
