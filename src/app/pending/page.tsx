@@ -2,14 +2,19 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { getAdminPendingData, approveAsset, rejectAsset, checkIpConflict } from "@/lib/actions/assets";
+import { approveAsset, rejectAsset, checkIpConflict } from "@/lib/actions/assets";
+// 🚀 關鍵修正：直接引入前端 Supabase 客戶端，繞過後端快取
+import { supabase } from "@/lib/supabase";
 
 import styles from "./pending.module.css";
 
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V300.46 姓名分機獨立顯示版
+ * 狀態：V300.50 客戶端直連版 (完全繞過 Next.js 快取)
+ * 職責：
+ * 1. 快取破防：廢除 Server Action，改由前端 Client 直連 Supabase 獲取資料。
+ * 2. 實體對齊：100% 鎖定「資產」表，並確保顯示分離後的「姓名」與「分機」。
  * ==========================================
  */
 
@@ -31,11 +36,37 @@ export default function PendingPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
+  // 🚀 關鍵修正：完全在前端執行資料庫查詢，保證絕對即時，0 快取！
   const fetchPending = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getAdminPendingData();
-      setPendingList(data || []);
+      const { data, error } = await supabase
+        .from("資產")
+        .select("*")
+        .eq("狀態", "待核定")
+        .order("建立時間", { ascending: true });
+
+      if (error) throw error;
+
+      // 在前端直接執行資料格式化
+      const formattedData = (data || []).map((r) => ({
+        formId: String(r.案件編號 || ""),
+        date: String(r.裝機日期 || ""),
+        area: String(r.棟別 || ""), 
+        floor: String(r.樓層 || ""),
+        unit: String(r.使用單位 || ""),
+        applicantName: String(r.姓名 || ""),
+        applicantExt: String(r.分機 || ""),
+        model: String(r.品牌型號 || ""),
+        sn: String(r.產品序號 || ""),
+        mac1: String(r.主要mac || ""),
+        mac2: String(r.無線mac || ""),
+        status: String(r.狀態 || ""),
+        vendor: String(r.來源廠商 || ""),
+        remark: String(r.備註 || "")
+      }));
+
+      setPendingList(formattedData);
     } catch (err: any) {
       showToast(err.message || "清單載入失敗，請檢查系統連線", "error");
     } finally {
@@ -64,7 +95,7 @@ export default function PendingPage() {
       setProcessingSn(null);
       setApprovalData({ ip: "", deviceName: "", type: "桌上型電腦" });
       setIpConflictMsg(null);
-      fetchPending();
+      fetchPending(); // 成功後重新載入
     } catch (err: any) {
       showToast(`核發失敗: ${err.message}`, "error");
     } finally {
@@ -80,7 +111,7 @@ export default function PendingPage() {
       showToast("案件已退回給廠商修正", "success");
       setProcessingSn(null);
       setRejectReason("");
-      fetchPending();
+      fetchPending(); // 成功後重新載入
     } catch (err: any) {
       showToast(`退回失敗: ${err.message}`, "error");
     } finally {
@@ -113,6 +144,7 @@ export default function PendingPage() {
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-sky-800 p-1"><span className="material-symbols-outlined">menu</span></button>
              <h1 className="text-lg font-black text-sky-800 uppercase tracking-widest">Administrative Approval</h1>
            </div>
+           {/* 點擊按鈕直接觸發資料庫重抓 */}
            <button onClick={fetchPending} className="text-slate-400 hover:text-blue-600 transition-colors bg-white p-2 rounded-lg border border-slate-100 shadow-sm flex items-center gap-2 text-xs font-bold"><span className="material-symbols-outlined text-sm">sync</span> 資料更新</button>
         </header>
 
@@ -145,7 +177,6 @@ export default function PendingPage() {
                        <p className="font-bold text-slate-800">{item.unit}</p>
                        <p className="text-xs text-slate-500">{item.area} {item.floor}</p>
                      </div>
-                     {/* 🚀 這裡顯示已分離的姓名與分機 */}
                      <div>
                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">聯絡人員</p>
                        <p className="font-bold text-slate-800">{item.applicantName} <span className="text-slate-400 text-xs font-normal">#{item.applicantExt}</span></p>
@@ -190,7 +221,7 @@ export default function PendingPage() {
       </main>
 
       {isLoading && (
-        <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">系統資料處理中...</p></div>
+        <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">資料同步中...</p></div>
       )}
 
       <div className="fixed bottom-10 right-8 z-[9000] flex flex-col gap-3">
