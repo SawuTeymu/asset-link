@@ -1,53 +1,102 @@
 "use server";
 
-import { supabase } from "@/lib/supabase";
+import { supabase } from "../supabase";
+import { logAction } from "./auth";
+import { unstable_noStore as noStore } from "next/cache";
 
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V300.65 完整功能穩定版
+ * 狀態：V400.0 終極完整無刪減版
  * 職責：
- * 1. 行政核發 (approveAsset)：配發 IP 與設備標記。
- * 2. 行政退回 (rejectAsset)：記錄原因並發還修正。
- * 3. 衝突檢查 (checkIpConflict)：防止 IP 重複配發。
- * 4. 系統日誌 (logAction)：記錄管理員操作軌跡。
- * 5. 強制同步：0 簡化、0 刪除，含完整錯誤捕捉。
+ * 1. 保留所有跨頁面呼叫的 Server Actions (0刪除)。
+ * 2. 包含最新版防呆與 .select() 驗證的核發/退回功能。
  * ==========================================
  */
 
-/**
- * 內部函式：記錄管理員操作日誌
- * 確保所有行政動作皆有跡可循
- */
-async function logAction(operator: string, action: string) {
-  try {
-    const { error } = await supabase
-      .from("admin_logs")
-      .insert([
-        {
-          operator: operator,
-          action: action,
-          timestamp: new Date().toISOString(),
-        }
-      ]);
-    if (error) console.error("【日誌寫入失敗】", error.message);
-  } catch (err) {
-    console.error("【日誌系統異常】", err);
-  }
+// --- 1. IP 衝突檢查 (包含歷史庫與現行庫) ---
+export async function checkIpConflict(ip: string) {
+  const cleanIp = ip.trim();
+  if (!cleanIp) return false;
+  
+  // 檢查歷史結案庫
+  const { data: archive } = await supabase.from("historical_assets").select("*").eq("核定ip", cleanIp).maybeSingle();
+  if (archive) return true;
+  
+  // 檢查現行資產庫
+  const { data: active } = await supabase.from("資產").select("*").eq("核定ip", cleanIp).maybeSingle();
+  return !!active;
 }
 
-/**
- * 行政核發資產：配發 IP 地址並標記設備名稱
- */
+// --- 2. 內部直通入庫 (供 /internal 使用) ---
+export async function submitInternalIssue(payload: any) {
+  const { error } = await supabase.from("historical_assets").insert([{
+    "核定ip": payload.ip,
+    "主要mac": payload.mac1 || "",
+    "產品序號": payload.sn,
+    "設備名稱標記": payload.deviceName,
+    "設備類型": payload.deviceType,
+    "品牌型號": payload.model || "未提供",
+    "棟別": payload.area,
+    "樓層": payload.floor,
+    "使用單位": payload.unit,
+    "姓名": payload.applicantName,
+    "分機": payload.applicantExt,
+    "同步來源": "內部直通",
+    "行政備註": payload.remark || "",
+    "狀態": "已結案"
+  }]);
+  
+  if (error) throw new Error("入庫寫入失敗: " + error.message);
+  await logAction("SYSTEM_ADMIN", `執行內部直通結案 (SN: ${payload.sn})`);
+  return true;
+}
+
+// --- 3. 管理端刪除資產 ---
+export async function deleteAssetAdmin(sn: string) {
+  const { error } = await supabase.from("資產").delete().eq("產品序號", sn);
+  if (error) throw new Error("資產刪除失敗: " + error.message);
+  await logAction("SYSTEM_ADMIN", `管理者執行資產刪除 (SN: ${sn})`);
+  return { success: true };
+}
+
+// --- 4. 取得待核定清單 (保留給舊模組使用，Pending 頁面已改為前端直連) ---
+export async function getAdminPendingData() {
+  noStore();
+  const { data, error } = await supabase
+    .from("資產")
+    .select("*")
+    .eq("狀態", "待核定")
+    .order("建立時間", { ascending: true });
+
+  if (error) throw new Error("讀取待辦清單失敗: " + error.message);
+
+  const typedData = data as unknown as Record<string, unknown>[];
+  return (typedData || []).map((r) => ({
+    formId: String(r.案件編號 || ""),
+    date: String(r.裝機日期 || ""),
+    area: String(r.棟別 || ""), 
+    floor: String(r.樓層 || ""),
+    unit: String(r.使用單位 || ""),
+    applicantName: String(r.姓名 || ""),
+    applicantExt: String(r.分機 || ""),
+    model: String(r.品牌型號 || ""),
+    sn: String(r.產品序號 || ""),
+    mac1: String(r.主要mac || ""),
+    mac2: String(r.無線mac || ""),
+    status: String(r.狀態 || ""),
+    vendor: String(r.來源廠商 || ""),
+    remark: String(r.備註 || "")
+  }));
+}
+
+// --- 5. 行政核發資產 (最新強固版) ---
 export async function approveAsset(sn: string, ip: string, deviceName: string, type: string) {
   const cleanSn = sn.trim();
   const cleanIp = ip.trim();
   const cleanDeviceName = deviceName.trim().toUpperCase();
 
-  console.log("【Server Action】開始執行核發程序 - 序號:", cleanSn);
-
   try {
-    // 執行資料庫更新，並使用 .select() 要求回傳更新後的結果
     const { data, error } = await supabase
       .from("資產")
       .update({
@@ -59,40 +108,23 @@ export async function approveAsset(sn: string, ip: string, deviceName: string, t
       .eq("產品序號", cleanSn)
       .select();
 
-    // 1. 檢查是否發生資料庫語法或權限錯誤
-    if (error) {
-      console.error("【Supabase API 錯誤】", error);
-      throw new Error(`資料庫更新失敗: ${error.message}`);
-    }
+    if (error) throw new Error(`資料庫更新失敗: ${error.message}`);
+    if (!data || data.length === 0) throw new Error("找不到對應的產品序號，無法更新狀態。");
 
-    // 2. 檢查是否有任何資料列被改動 (防止 SN 匹配失敗)
-    if (!data || data.length === 0) {
-      console.warn("【更新無效】找不到匹配的產品序號:", cleanSn);
-      throw new Error("找不到對應的產品序號，請確認資料庫中是否存在該序號。");
-    }
-
-    // 3. 記錄操作日誌
-    await logAction("SYSTEM_ADMIN", `核發 IP: ${cleanIp} 給設備 ${cleanDeviceName} (SN: ${cleanSn})`);
-
-    console.log("【核發成功】資料列已更新。");
+    await logAction("SYSTEM_ADMIN", `行政核定配發 IP: ${cleanIp} (SN: ${cleanSn})`);
     return { success: true };
   } catch (err: any) {
-    console.error("【核發程序潰散】", err.message);
-    throw err; // 將錯誤拋回前端 Pending 頁面顯示
+    console.error("【Server Action 崩潰 - approveAsset】", err);
+    throw err;
   }
 }
 
-/**
- * 行政退回案件：填寫退回原因，並要求廠商重填
- */
+// --- 6. 行政退回案件 (最新強固版) ---
 export async function rejectAsset(sn: string, reason: string) {
   const cleanSn = sn.trim();
   const cleanReason = reason.trim();
 
-  console.log("【Server Action】開始執行退回程序 - 序號:", cleanSn);
-
   try {
-    // 執行資料庫更新
     const { data, error } = await supabase
       .from("資產")
       .update({
@@ -102,52 +134,87 @@ export async function rejectAsset(sn: string, reason: string) {
       .eq("產品序號", cleanSn)
       .select();
 
-    // 1. 檢查資料庫錯誤
-    if (error) {
-      console.error("【Supabase API 錯誤 - 退回】", error);
-      throw new Error(`退回動作失敗: ${error.message}`);
-    }
+    if (error) throw new Error(`資料庫更新失敗: ${error.message}`);
+    if (!data || data.length === 0) throw new Error("找不到對應的產品序號，無法執行退回操作。");
 
-    // 2. 檢查資料列匹配
-    if (!data || data.length === 0) {
-      console.warn("【退回無效】找不到匹配的產品序號:", cleanSn);
-      throw new Error("找不到對應的產品序號，無法更新退回狀態。");
-    }
-
-    // 3. 記錄日誌
-    await logAction("SYSTEM_ADMIN", `退回案件 SN: ${cleanSn}，原因: ${cleanReason}`);
-
-    console.log("【退回成功】狀態已改為：已退回(待修正)");
+    await logAction("SYSTEM_ADMIN", `退回資產案件修正，原因: ${cleanReason} (SN: ${cleanSn})`);
     return { success: true };
   } catch (err: any) {
-    console.error("【退回程序潰散】", err.message);
+    console.error("【Server Action 崩潰 - rejectAsset】", err);
     throw err;
   }
 }
 
-/**
- * 檢查 IP 地址是否已在資料庫中被佔用
- */
-export async function checkIpConflict(ip: string) {
-  const cleanIp = ip.trim();
-  if (!cleanIp) return false;
+// --- 7. 取得廠商進度 (供 /keyin 使用) ---
+export async function getVendorProgress(vendor: string) {
+  noStore();
+  const filterDateStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const [activeRes, histRes] = await Promise.all([
+    supabase.from("資產").select("*").eq("來源廠商", vendor),
+    supabase.from("historical_assets").select("*").eq("同步來源", vendor)
+  ]);
+
+  if (activeRes.error) throw new Error("讀取進行中資料失敗");
+  if (histRes.error) throw new Error("讀取歷史庫資料失敗");
+
+  const activeRecords = (activeRes.data || []).map((r) => ({
+    formId: String(r.案件編號 || ""), status: String(r.狀態 || ""), date: String(r.裝機日期 || ""),
+    area: String(r.棟別 || ""), floor: String(r.樓層 || ""), unit: String(r.使用單位 || ""),
+    model: String(r.品牌型號 || ""), sn: String(r.產品序號 || ""), mac1: String(r.主要mac || ""), mac2: String(r.無線mac || ""),
+    applicantName: String(r.姓名 || ""), applicantExt: String(r.分機 || ""),
+    remark: String(r.備註 || ""), rejectReason: String(r.行政退回原因 || ""),
+    assignedIp: String(r.核定ip || ""), assignedName: String(r.設備名稱標記 || ""), _createTime: String(r.建立時間 || "")
+  }));
+
+  const histRecords = (histRes.data || []).map((r) => ({
+    formId: String(r.結案單號 || ""), status: "已結案", date: String(r.裝機日期 || ""),
+    area: String(r.棟別 || ""), floor: String(r.樓層 || ""), unit: String(r.使用單位 || ""),
+    model: String(r.品牌型號 || ""), sn: String(r.產品序號 || ""), mac1: String(r.主要mac || ""), mac2: String(r.無線mac || ""),
+    applicantName: String(r.姓名 || ""), applicantExt: String(r.分機 || ""),
+    remark: String(r.行政備註 || "結案存檔"), rejectReason: "",
+    assignedIp: String(r.核定ip || ""), assignedName: String(r.設備名稱標記 || ""), _createTime: String(r.建立時間 || "")
+  }));
+
+  return [...activeRecords, ...histRecords]
+    .filter(item => item.date >= filterDateStr)
+    .sort((a, b) => {
+      if (b.date !== a.date) return b.date.localeCompare(a.date);
+      return b._createTime.localeCompare(a._createTime);
+    });
+}
+
+// --- 8. 廠商確認結案歸檔 ---
+export async function vendorConfirmAsset(sn: string) {
+  const { data: asset, error: fetchErr } = await supabase.from("資產").select("*").eq("產品序號", sn).single();
+  if (fetchErr || !asset) throw new Error("找不到該核定案件");
   
-  try {
-    // 查詢「資產」表中「核定ip」欄位是否已有重複值
-    const { count, error } = await supabase
-      .from("資產")
-      .select("*", { count: "exact", head: true })
-      .eq("核定ip", cleanIp);
+  const isReplace = String(asset.備註 || "").includes("[REPLACE]");
+  const { error: insertErr } = await supabase.from("historical_assets").insert([{
+    "結案單號": asset.案件編號, "裝機日期": asset.裝機日期, "棟別": asset.棟別, "樓層": asset.樓層,
+    "使用單位": asset.使用單位, "姓名": asset.姓名, "分機": asset.分機, "設備類型": asset.設備類型 || "桌上型電腦",
+    "品牌型號": asset.品牌型號, "產品序號": sn, "主要mac": asset.主要mac, "無線mac": asset.無線mac,
+    "核定ip": asset.核定ip, "設備名稱標記": asset.設備名稱標記, "狀態": "已結案",
+    "行政備註": isReplace ? "汰換結案" : "新購結案", "同步來源": asset.來源廠商
+  }]);
 
-    if (error) {
-      console.error("【IP 衝突檢查失敗】", error.message);
-      return false;
-    }
+  if (insertErr) throw new Error("遷移歷史庫失敗: " + insertErr.message);
+  await supabase.from("資產").delete().eq("產品序號", sn);
+  await logAction("VENDOR_KEYIN", `廠商確認結案 (SN: ${sn})`);
+  return { success: true };
+}
 
-    // 若筆數大於 0 則代表衝突
-    return (count || 0) > 0;
-  } catch (err) {
-    console.error("【IP 檢查程序異常】", err);
-    return false;
+// --- 9. 批次提交預約 ---
+export async function submitAssetBatch(batchData: any[]) {
+  for (const d of batchData) {
+    if (d.original_sn) await supabase.from("資產").delete().eq("產品序號", d.original_sn);
   }
+  const insertData = batchData.map(d => ({
+    "案件編號": d.form_id, "裝機日期": d.install_date, "棟別": d.area, "樓層": d.floor,
+    "使用單位": d.unit, "姓名": d.applicantName, "分機": d.applicantExt, "品牌型號": d.model, "產品序號": d.sn,
+    "主要mac": d.mac1, "無線mac": d.mac2, "備註": d.remark, "來源廠商": d.vendor, "狀態": d.status || "待核定"
+  }));
+  const { error } = await supabase.from("資產").insert(insertData);
+  if (error) throw new Error("預約資料提交失敗: " + error.message);
+  return { success: true };
 }
