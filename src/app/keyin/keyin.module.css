@@ -1,5 +1,4 @@
-
-/* Keyin 專用物理樣式矩陣 - V300.31 (Safari 相容與 0 簡化版) */
+/* Keyin 專用物理樣式矩陣 - V300.41 文字體驗優化版 */
 
 .medicalGradient {
     background: radial-gradient(circle at top left, #f0fdf4 0%, #faf8ff 50%, #eef6ff 100%);
@@ -19,8 +18,8 @@
     background: rgba(255, 255, 255, 0.5);
     border: 1px solid rgba(203, 213, 225, 0.8);
     border-radius: 0.75rem;
-    padding: 12px 16px;
-    font-size: 14px;
+    padding: 10px 14px;
+    font-size: 13px;
     font-weight: 700;
     color: #1e293b;
     outline: none;
@@ -33,14 +32,82 @@
     background: #ffffff;
 }
 
-.zebraGlass tr:nth-child(even) { background: rgba(0, 97, 148, 0.02); }
-.zebraGlass tr:nth-child(odd) { background: transparent; }
-
-.iconFill {
-    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+/* 設備區塊專用兩行佈局樣式 */
+.deviceContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    overflow: hidden;
 }
 
-/* 物理 Toast 樣式 */
+.deviceItemBlock {
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    border-radius: 1.5rem;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.deviceItemBlock:hover {
+    border-color: #006194;
+    background: rgba(255, 255, 255, 0.7);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 97, 148, 0.05);
+}
+
+.rowGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+@media (max-width: 640px) {
+    .rowGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.inputLabel {
+    font-size: 10px;
+    font-weight: 900;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+    display: block;
+    margin-left: 4px;
+}
+
+.removeBtn {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #fee2e2;
+    color: #ef4444;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #ffffff;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.removeBtn:hover {
+    background: #ef4444;
+    color: #ffffff;
+    transform: scale(1.1);
+}
+
 .toastBase {
     position: fixed;
     bottom: 40px;
