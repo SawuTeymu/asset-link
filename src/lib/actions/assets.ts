@@ -7,11 +7,11 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V400.6 伺服器端權限守門員 (100% 全功能完整版)
+ * 狀態：V400.8 伺服器端權限守門員 (TS2352 物理修復版)
  * 職責：
  * 1. 物理防護：新增 verifyVendorAuth 函式，每次操作前查核 vendors 狀態。
- * 2. 零刪減：保留所有跨頁面呼叫的 Server Actions (含內部直通、刪除等)。
- * 3. 穩定防呆：包含最新版防呆、trim() 去除空白與 .select() 驗證的核發/退回功能。
+ * 2. 型別修復：透過 unknown 橋接轉換，徹底消滅 Supabase ParserError 編譯錯誤。
+ * 3. 零刪減：保留所有跨頁面呼叫的 Server Actions (含內部直通、刪除等)。
  * ==========================================
  */
 
@@ -29,7 +29,10 @@ async function verifyVendorAuth(vendorName: string) {
     throw new Error(`無法驗證廠商身分 [${vendorName}]，可能該廠商不存在於資料庫。`);
   }
   
-  if (data.授權啟用開關 !== true || data.行政狀態 !== '正常') {
+  // 🚀 物理修復：透過 unknown 橋接強制轉型，繞過 TypeScript TS2352 的嚴格檢查
+  const vendorData = data as unknown as { 授權啟用開關: boolean; 行政狀態: string; };
+  
+  if (vendorData.授權啟用開關 !== true || vendorData.行政狀態 !== '正常') {
     throw new Error(`【存取拒絕】廠商 [${vendorName}] 帳號已停權或停用，系統禁止操作。`);
   }
 }
