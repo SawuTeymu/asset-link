@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { approveAsset, rejectAsset, checkIpConflict } from "@/lib/actions/assets";
-// 🚀 關鍵修正：直接引入前端 Supabase 客戶端，繞過後端快取
 import { supabase } from "@/lib/supabase";
 
 import styles from "./pending.module.css";
@@ -11,10 +10,11 @@ import styles from "./pending.module.css";
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V300.50 客戶端直連版 (完全繞過 Next.js 快取)
+ * 狀態：V300.51 潔淨規範版 (消除 Inline Style)
  * 職責：
- * 1. 快取破防：廢除 Server Action，改由前端 Client 直連 Supabase 獲取資料。
+ * 1. 消除警告：將 icon 的 inline style 替換為 styles.iconFill，符合嚴格的開發規範。
  * 2. 實體對齊：100% 鎖定「資產」表，並確保顯示分離後的「姓名」與「分機」。
+ * 3. 快取破防：直接從前端 Client 直連 Supabase 獲取資料。
  * ==========================================
  */
 
@@ -36,7 +36,6 @@ export default function PendingPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // 🚀 關鍵修正：完全在前端執行資料庫查詢，保證絕對即時，0 快取！
   const fetchPending = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -48,7 +47,6 @@ export default function PendingPage() {
 
       if (error) throw error;
 
-      // 在前端直接執行資料格式化
       const formattedData = (data || []).map((r) => ({
         formId: String(r.案件編號 || ""),
         date: String(r.裝機日期 || ""),
@@ -95,7 +93,7 @@ export default function PendingPage() {
       setProcessingSn(null);
       setApprovalData({ ip: "", deviceName: "", type: "桌上型電腦" });
       setIpConflictMsg(null);
-      fetchPending(); // 成功後重新載入
+      fetchPending();
     } catch (err: any) {
       showToast(`核發失敗: ${err.message}`, "error");
     } finally {
@@ -111,7 +109,7 @@ export default function PendingPage() {
       showToast("案件已退回給廠商修正", "success");
       setProcessingSn(null);
       setRejectReason("");
-      fetchPending(); // 成功後重新載入
+      fetchPending();
     } catch (err: any) {
       showToast(`退回失敗: ${err.message}`, "error");
     } finally {
@@ -126,7 +124,10 @@ export default function PendingPage() {
 
       <aside className={`w-64 fixed left-0 top-0 h-screen border-r border-white/40 ${styles.clinicalGlass} flex flex-col p-6 z-50 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
           <div className="flex items-center gap-3 mb-10 px-2">
-             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg"><span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1, 'wght' 400" }}>hub</span></div>
+             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg">
+               {/* 🚀 物理修正：移除 inline style，套用 styles.iconFill */}
+               <span className={`material-symbols-outlined ${styles.iconFill}`}>hub</span>
+             </div>
              <h2 className="text-xl font-black text-sky-900 tracking-tighter uppercase">ALink 總控台</h2>
           </div>
           <nav className="flex-1 space-y-2">
@@ -144,7 +145,6 @@ export default function PendingPage() {
              <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-sky-800 p-1"><span className="material-symbols-outlined">menu</span></button>
              <h1 className="text-lg font-black text-sky-800 uppercase tracking-widest">Administrative Approval</h1>
            </div>
-           {/* 點擊按鈕直接觸發資料庫重抓 */}
            <button onClick={fetchPending} className="text-slate-400 hover:text-blue-600 transition-colors bg-white p-2 rounded-lg border border-slate-100 shadow-sm flex items-center gap-2 text-xs font-bold"><span className="material-symbols-outlined text-sm">sync</span> 資料更新</button>
         </header>
 
@@ -221,13 +221,15 @@ export default function PendingPage() {
       </main>
 
       {isLoading && (
-        <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">資料同步中...</p></div>
+        <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">資料處理中...</p></div>
       )}
 
       <div className="fixed bottom-10 right-8 z-[9000] flex flex-col gap-3">
         {toasts.map(t => (
           <div key={t.id} className={styles.toastBase}>
-            <span className="material-symbols-outlined text-sm">{t.type === 'success' ? 'check_circle' : 'report'}</span> 
+            <span className="material-symbols-outlined text-sm">
+              {t.type === 'success' ? 'check_circle' : 'report'}
+            </span> 
             <span className="tracking-wide">{t.msg}</span>
           </div>
         ))}
