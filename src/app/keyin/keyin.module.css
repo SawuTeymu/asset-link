@@ -1,5 +1,5 @@
 /* src/app/keyin/keyin.module.css */
-/* Keyin 專用物理樣式矩陣 - V400.1 文字體驗優化與防報警版 */
+/* Keyin 專用物理樣式矩陣 - V400.4 手機版真獨立框卡片版 */
 
 .medicalGradient {
     background: radial-gradient(circle at top left, #f0fdf4 0%, #faf8ff 50%, #eef6ff 100%);
@@ -8,7 +8,6 @@
 
 .clinicalGlass {
     background: rgba(255, 255, 255, 0.75);
-    /* 🚀 物理修正：帶前綴的屬性 (-webkit) 必須寫在標準屬性上方 */
     -webkit-backdrop-filter: blur(24px);
     backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.5);
@@ -34,15 +33,7 @@
     background: #ffffff;
 }
 
-/* 設備區塊專用兩行佈局樣式 */
-.deviceContainer {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    width: 100%;
-    overflow: hidden;
-}
-
+/* 用於設備填寫區與手機版進度卡片的共通獨立框 */
 .deviceItemBlock {
     background: rgba(255, 255, 255, 0.4);
     border: 1px solid rgba(226, 232, 240, 0.8);
@@ -50,7 +41,6 @@
     padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
     position: relative;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -142,7 +132,6 @@
     align-items: center;
     justify-content: center;
     background: rgba(255, 255, 255, 0.6);
-    /* 🚀 物理修正：帶前綴的屬性 (-webkit) 必須寫在標準屬性上方 */
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
 }
@@ -160,7 +149,6 @@
     to { transform: rotate(360deg); } 
 }
 
-/* Material Symbols 實心圖示專用屬性 */
 .iconFill {
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }

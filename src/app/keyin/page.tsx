@@ -9,13 +9,12 @@ import styles from "./keyin.module.css";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.3 行動完美優化版
+ * 狀態：V400.4 手機真卡片跳行版 (True Card Layout)
  * 職責：
  * 1. 預約錄入：支援 MAC 格式化與防呆。
  * 2. 狀態矩陣：動態支援 [待核定, 已退回(待修正), 已核定(待確認), 已結案]。
  * 3. 自動 SN：留空時自動產生 AUTO-YYYYMMDD-HEX 格式序號。
- * 4. RWD 卡片化修復：消滅 min-w-[900px] 的強制寬度，徹底實現手機版卡片直向堆疊無捲軸。
- * 5. 500 修復：改用 Server Action (submitAssetBatch) 進行表單提交。
+ * 4. 🚀 物理響應式架構：電腦版維持資料表(Table)，手機版改為獨立卡片區塊跳行顯示，樣式完美對齊輸入框。
  * ==========================================
  */
 
@@ -88,7 +87,6 @@ export default function KeyinPage() {
     setDevices(newDevices);
   };
 
-  // --- 提交預約 (包含自動 SN 生成與 Server Action 修復 500 Error) ---
   const handleSubmit = async () => {
     if (isLoading) return;
     if (!metadata.area || !metadata.unit || !metadata.applicantName) { 
@@ -98,7 +96,6 @@ export default function KeyinPage() {
 
     setIsLoading(true);
     try {
-      // 🚀 動態產生 SN 邏輯
       const processedDevices = devices.map(d => {
         let finalSn = d.sn.trim().toUpperCase();
         if (!finalSn) {
@@ -127,7 +124,6 @@ export default function KeyinPage() {
         original_sn: d.original_sn
       }));
 
-      // 🚀 改用 Server Action 提交，徹底消滅 localhost 500 Method Not Allowed 錯誤
       await submitAssetBatch(payload);
 
       setDevices([{ type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }]);
@@ -263,7 +259,7 @@ export default function KeyinPage() {
                        <button onClick={() => setDevices([...devices, { type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }])} className="text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] bg-blue-50 px-5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-100 shadow-sm">+ 新增設備節點</button>
                     </div>
                     
-                    <div className={styles.deviceContainer}>
+                    <div className="flex flex-col gap-5 w-full">
                       {devices.map((d, i) => (
                         <div key={i} className={styles.deviceItemBlock}>
                           <div className={styles.rowGrid}>
@@ -298,11 +294,10 @@ export default function KeyinPage() {
                   <button onClick={() => fetchPendingRecords(vendorName)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm"><span className="material-symbols-outlined text-sm">sync</span> 重新整理</button>
                 </div>
                 
-                {/* 🚀 套用 mobileCard 樣式與 data-label，實現無捲軸的直向堆疊 */}
-                <div className={styles.tableContainer}>
-                  {/* 物理修正：將 min-w-[900px] 改為 lg:min-w-[900px] 避免強制撐開手機版 */}
-                  <table className={`w-full text-left lg:min-w-[900px] ${styles.responsiveTable}`}>
-                    <thead className={styles.desktopOnly}>
+                {/* 🚀 物理響應式架構 A：電腦版大螢幕顯示標準橫向表格 */}
+                <div className="hidden lg:block overflow-x-auto w-full">
+                  <table className="w-full text-left min-w-[900px]">
+                    <thead>
                       <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
                         <th className="pb-4 px-4">產品序號 (S/N)</th>
                         <th className="pb-4 px-4">部署單位 / 棟別</th>
@@ -313,90 +308,115 @@ export default function KeyinPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                       {pendingRecords.map((record, idx) => (
-                        <tr key={idx} className={`${styles.mobileCard} hover:bg-slate-50/50 transition-all`}>
-                          <td className={`${styles.mobileTd} p-4 font-mono text-xs text-slate-500 align-top`} data-label="產品序號 (S/N)">
-                            {record.sn}
-                          </td>
-                          <td className={`${styles.mobileTd} p-4 font-bold align-top`} data-label="部署單位 / 棟別">
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-all">
+                          <td className="p-4 font-mono text-xs text-slate-500 align-top">{record.sn}</td>
+                          <td className="p-4 font-bold align-top">
                             <p className="text-slate-800">{record.unit}</p>
                             <p className="text-[10px] text-slate-400 font-normal uppercase mt-0.5">{record.area} | {record.floor} | {record.date}</p>
                             <p className="text-[10px] text-slate-500 font-normal mt-0.5">{record.applicantName} #{record.applicantExt}</p>
                           </td>
-                          <td className={`${styles.mobileTd} p-4 align-top`} data-label="設備參數 / IP狀態">
+                          <td className="p-4 align-top">
                             <p className="font-bold text-slate-600">{record.model}</p>
                             <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">MAC: <span className="font-black text-blue-600">{record.mac1}</span></p>
                             {record.assignedIp && (
-                              <p className="text-[10px] font-bold text-emerald-600 mt-1.5 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-100">
-                                核發 IP: {record.assignedIp}
-                              </p>
+                              <p className="text-[10px] font-bold text-emerald-600 mt-1.5 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-100">核發 IP: {record.assignedIp}</p>
                             )}
                           </td>
-                          <td className={`${styles.mobileTd} p-4 align-top`} data-label="案件狀態">
+                          <td className="p-4 align-top">
                             {record.status === '待核定' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">審核中</span>}
-                            
                             {record.status === '已退回(待修正)' && (
                               <div className="flex flex-col items-start gap-1">
                                 <span className="bg-red-100 text-red-700 text-[10px] px-3 py-1.5 rounded-full border border-red-200 font-black uppercase tracking-widest shadow-sm">已退回</span>
                                 <span className="text-[10px] text-red-600 font-bold bg-red-50 px-2 py-1 rounded border border-red-100">原因: {record.rejectReason}</span>
                               </div>
                             )}
-
-                            {record.status === '已核定(待確認)' && (
-                              <span className="bg-blue-100 text-blue-700 text-[10px] px-3 py-1.5 rounded-full border border-blue-200 font-black uppercase tracking-widest shadow-sm">已核發</span>
-                            )}
-
+                            {record.status === '已核定(待確認)' && <span className="bg-blue-100 text-blue-700 text-[10px] px-3 py-1.5 rounded-full border border-blue-200 font-black uppercase tracking-widest shadow-sm">已核發</span>}
                             {record.status === '已結案' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm">歸檔完畢</span>}
                           </td>
-                          <td className={`${styles.mobileTd} p-4 align-top lg:text-right`} data-label="管理操作">
-                            <div className={`flex flex-col lg:items-end gap-2 ${styles.mobileActionStack}`}>
-                               {record.status === '待核定' && (
-                                 <button onClick={() => handleDeletePending(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-slate-200 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all shadow-sm bg-white">撤回申請</button>
-                               )}
-                               
-                               {record.status === '已退回(待修正)' && (
-                                 <button onClick={() => handleLoadFix(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm bg-white flex items-center justify-center lg:justify-start gap-1">
-                                   <span className="material-symbols-outlined text-[14px]">edit_document</span> 載入修正
-                                 </button>
-                               )}
-
-                               {record.status === '已核定(待確認)' && (
-                                 <button onClick={() => handleConfirm(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-transparent text-white bg-emerald-500 rounded-xl hover:bg-emerald-600 transition-all shadow-sm flex items-center justify-center lg:justify-start gap-1">
-                                   <span className="material-symbols-outlined text-[14px]">verified</span> 確認結案
-                                 </button>
-                               )}
-
-                               {record.status === '已結案' && (
-                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-full lg:w-auto">不適用操作</span>
-                               )}
+                          <td className="p-4 align-top text-right">
+                            <div className="flex flex-col items-end gap-2">
+                               {record.status === '待核定' && <button onClick={() => handleDeletePending(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-slate-200 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all shadow-sm bg-white">撤回申請</button>}
+                               {record.status === '已退回(待修正)' && <button onClick={() => handleLoadFix(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm bg-white flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">edit_document</span> 載入修正</button>}
+                               {record.status === '已核定(待確認)' && <button onClick={() => handleConfirm(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-transparent text-white bg-emerald-500 rounded-xl hover:bg-emerald-600 transition-all shadow-sm flex items-center gap-1"><span className="material-symbols-outlined text-[14px]">verified</span> 確認結案</button>}
+                               {record.status === '已結案' && <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">不適用操作</span>}
                             </div>
                           </td>
                         </tr>
                       ))}
-                      {pendingRecords.length === 0 && !isLoading && (
-                        <tr><td colSpan={5} className="py-20 text-center text-slate-400 font-bold italic">目前無任何案件紀錄。</td></tr>
-                      )}
+                      {pendingRecords.length === 0 && !isLoading && <tr><td colSpan={5} className="py-20 text-center text-slate-400 font-bold italic">目前無任何案件紀錄。</td></tr>}
                     </tbody>
                   </table>
+                </div>
+
+                {/* 🚀 物理響應式架構 B：手機版小螢幕顯示「輸入框風格的跳行卡片區塊」 */}
+                <div className="grid grid-cols-1 gap-5 lg:hidden w-full">
+                  {pendingRecords.map((record, idx) => (
+                    <div key={idx} className={styles.deviceItemBlock}>
+                      {/* 表頭區：序號與狀態 */}
+                      <div className="flex justify-between items-center border-b border-slate-200/60 pb-3 mb-3">
+                        <span className="font-mono text-sm font-black text-slate-600">{record.sn}</span>
+                        <div>
+                          {record.status === '待核定' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">審核中</span>}
+                          {record.status === '已退回(待修正)' && <span className="bg-red-100 text-red-700 text-[10px] px-3 py-1.5 rounded-full border border-red-200 font-black uppercase tracking-widest shadow-sm">已退回</span>}
+                          {record.status === '已核定(待確認)' && <span className="bg-blue-100 text-blue-700 text-[10px] px-3 py-1.5 rounded-full border border-blue-200 font-black uppercase tracking-widest shadow-sm">已核發</span>}
+                          {record.status === '已結案' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm">歸檔完畢</span>}
+                        </div>
+                      </div>
+
+                      {/* 內容區：完全比照輸入框佈局 (框跳行) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                           <label className={styles.inputLabel}>部署單位 / 聯絡人</label>
+                           <div className="bg-white/60 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700">
+                             {record.unit} ({record.area} {record.floor})
+                             <span className="text-slate-500 mt-1 block">{record.applicantName} #{record.applicantExt}</span>
+                           </div>
+                        </div>
+                        <div>
+                           <label className={styles.inputLabel}>設備參數</label>
+                           <div className="bg-white/60 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700">
+                             {record.model}
+                             <span className="text-blue-600 font-mono mt-1 block tracking-widest">{record.mac1}</span>
+                           </div>
+                        </div>
+                        
+                        {/* 條件顯示框 */}
+                        {record.assignedIp && (
+                           <div className="col-span-1 sm:col-span-2">
+                             <label className={styles.inputLabel}>核定 IP</label>
+                             <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm font-black text-emerald-600 font-mono tracking-widest text-center shadow-sm">
+                               {record.assignedIp}
+                             </div>
+                           </div>
+                        )}
+                        {record.status === '已退回(待修正)' && (
+                           <div className="col-span-1 sm:col-span-2">
+                             <label className={styles.inputLabel}>退回原因</label>
+                             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs font-bold text-red-600 shadow-sm">
+                               {record.rejectReason}
+                             </div>
+                           </div>
+                        )}
+                      </div>
+
+                      {/* 底部全寬操作按鈕區 */}
+                      <div className="mt-2 pt-4 border-t border-slate-200/60 flex flex-col gap-2">
+                         {record.status === '待核定' && <button onClick={() => handleDeletePending(record.sn)} className="w-full py-3.5 bg-white border border-slate-200 text-red-500 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-50 transition-all shadow-sm">撤回預約申請</button>}
+                         {record.status === '已退回(待修正)' && <button onClick={() => handleLoadFix(record.sn)} className="w-full py-3.5 bg-amber-500 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-amber-600 transition-all shadow-sm flex items-center justify-center gap-2"><span className="material-symbols-outlined text-[16px]">edit_document</span> 載入案件重新修正</button>}
+                         {record.status === '已核定(待確認)' && <button onClick={() => handleConfirm(record.sn)} className="w-full py-3.5 bg-emerald-500 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-sm flex items-center justify-center gap-2"><span className="material-symbols-outlined text-[16px]">verified</span> 確認設定並結案</button>}
+                         {record.status === '已結案' && <div className="w-full py-3.5 bg-slate-100 text-slate-400 rounded-xl font-black text-xs uppercase tracking-widest text-center border border-slate-200">此案件已封存</div>}
+                      </div>
+                    </div>
+                  ))}
+                  {pendingRecords.length === 0 && !isLoading && <div className="py-20 text-center text-slate-400 font-bold italic">目前無任何案件紀錄。</div>}
                 </div>
              </div>
           )}
         </main>
       </div>
 
-      {isLoading && (
-        <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">系統處理中...</p></div>
-      )}
-
-      <div className="fixed bottom-10 right-8 z-[9000] flex flex-col gap-3">
-        {toasts.map(t => (
-          <div key={t.id} className={styles.toastBase}>
-            <span className={`material-symbols-outlined text-sm ${styles.iconFill} ${t.type === 'success' ? 'text-emerald-400' : t.type === 'error' ? 'text-red-400' : 'text-blue-400'}`}>
-              {t.type === 'success' ? 'check_circle' : t.type === 'error' ? 'error' : 'info'}
-            </span> 
-            <span className="tracking-wide">{t.msg}</span>
-          </div>
-        ))}
-      </div>
+      {isLoading && <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">系統處理中...</p></div>}
+      <div className="fixed bottom-10 right-8 z-[9000] flex flex-col gap-3">{toasts.map(t => <div key={t.id} className={styles.toastBase}><span className={`material-symbols-outlined text-sm ${styles.iconFill} ${t.type === 'success' ? 'text-emerald-400' : t.type === 'error' ? 'text-red-400' : 'text-blue-400'}`}>{t.type === 'success' ? 'check_circle' : t.type === 'error' ? 'error' : 'info'}</span><span className="tracking-wide">{t.msg}</span></div>)}</div>
     </div>
   );
 }
