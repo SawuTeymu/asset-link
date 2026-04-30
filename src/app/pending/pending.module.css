@@ -9,10 +9,11 @@
 /* 玻璃擬態質感卡片 */
 .clinicalGlass {
   background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  /* 🚀 物理修正：帶前綴的屬性 (-webkit) 必須寫在標準屬性上方 */
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 
 /* 填寫輸入框樣式 */
@@ -50,8 +51,9 @@
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
+  /* 🚀 物理修正：帶前綴的屬性 (-webkit) 必須寫在標準屬性上方 */
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 /* 載入動畫轉輪 */
