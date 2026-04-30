@@ -3,19 +3,19 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { getVendorProgress, vendorConfirmAsset } from "@/lib/actions/assets";
+import { getVendorProgress, vendorConfirmAsset, submitAssetBatch } from "@/lib/actions/assets";
 import styles from "./keyin.module.css";
 
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.1 動態狀態連動完全體 (潔淨規範版)
+ * 狀態：V400.2 行動優化與自動 SN 防錯版
  * 職責：
  * 1. 預約錄入：支援 MAC 格式化與防呆。
  * 2. 狀態矩陣：動態支援 [待核定, 已退回(待修正), 已核定(待確認), 已結案]。
- * 3. 載入修正：將被退回的案件重新載入表單，再次提交時物理對沖舊單。
- * 4. 確認結案：接收 IP 後，觸發歸檔動作。
- * 5. 潔淨規範：移除所有 Inline Style，改用 CSS Modules。
+ * 3. 自動 SN：留空時自動產生 AUTO-YYYYMMDD-HEX 格式序號。
+ * 4. RWD 卡片化：消滅手機版橫向捲軸，改用直列卡片顯示資料表。
+ * 5. 500 修復：改用 Server Action (submitAssetBatch) 進行表單提交。
  * ==========================================
  */
 
@@ -26,7 +26,7 @@ interface DeviceState {
   mac: string;
   mac2: string;
   remark: string;
-  original_sn?: string; // 用於追蹤被退回的原始序號，以便覆寫
+  original_sn?: string;
 }
 
 export default function KeyinPage() {
@@ -57,12 +57,10 @@ export default function KeyinPage() {
     } catch (err) { console.error("棟別同步異常"); }
   }, [metadata.area]);
 
-  // 🚀 獲取廠商的全部進度 (包含進行中與歷史結案)
   const fetchPendingRecords = useCallback(async (vName: string) => {
     if (!vName) return;
     setIsLoading(true);
     try {
-      // 調用 Server Action 確保獲取最新狀態且無快取
       const data = await getVendorProgress(vName);
       setPendingRecords(data || []);
     } catch (err: any) {
@@ -80,7 +78,6 @@ export default function KeyinPage() {
     if (activeTab === "progress") fetchPendingRecords(v);
   }, [router, activeTab, fetchBuildings, fetchPendingRecords]);
 
-  // --- 設備 MAC 格式化 ---
   const handleMacInput = (index: number, val: string, macField: "mac" | "mac2") => {
     let macStr = val.toUpperCase().replace(/[^A-F0-9]/g, "");
     if (macStr.length > 12) macStr = macStr.substring(0, 12);
@@ -91,47 +88,59 @@ export default function KeyinPage() {
     setDevices(newDevices);
   };
 
-  // --- 提交預約 (支援新錄入與退回修正) ---
+  // --- 提交預約 (包含自動 SN 生成與 Server Action 修復 500 Error) ---
   const handleSubmit = async () => {
     if (isLoading) return;
-    if (!metadata.area || !metadata.unit || !metadata.applicantName) { showToast("請完整填寫行政資料 (包含姓名)", "error"); return; }
-    if (devices.some(d => !d.sn.trim())) { showToast("產品序號不可為空", "error"); return; }
+    if (!metadata.area || !metadata.unit || !metadata.applicantName) { 
+      showToast("請完整填寫行政資料 (包含姓名)", "error"); 
+      return; 
+    }
 
     setIsLoading(true);
     try {
-      const payload = devices.map(d => ({
-        "來源廠商": vendorName, "裝機日期": metadata.date, "棟別": metadata.area, "樓層": metadata.floor,
-        "使用單位": metadata.unit, "姓名": metadata.applicantName.trim(), "分機": metadata.applicantExt.trim(), 
-        "設備類型": d.type, "品牌型號": d.model || "未提供",
-        "產品序號": d.sn.trim().toUpperCase(), "主要mac": d.mac, "無線mac": d.mac2 || "", "備註": d.remark || "", "狀態": "待核定"
+      // 🚀 動態產生 SN 邏輯
+      const processedDevices = devices.map(d => {
+        let finalSn = d.sn.trim().toUpperCase();
+        if (!finalSn) {
+          const randomHex = Math.floor(Math.random() * 16777215).toString(16).toUpperCase().padStart(6, '0');
+          const dateStr = metadata.date.replace(/-/g, '');
+          finalSn = `AUTO-${dateStr}-${randomHex}`;
+        }
+        return { ...d, sn: finalSn };
+      });
+
+      const payload = processedDevices.map(d => ({
+        form_id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ID-${Date.now()}`,
+        install_date: metadata.date,
+        area: metadata.area,
+        floor: metadata.floor,
+        unit: metadata.unit,
+        applicantName: metadata.applicantName.trim(),
+        applicantExt: metadata.applicantExt.trim(),
+        model: d.model || "未提供",
+        sn: d.sn,
+        mac1: d.mac,
+        mac2: d.mac2 || "",
+        remark: d.remark || "",
+        vendor: vendorName,
+        status: "待核定",
+        original_sn: d.original_sn
       }));
 
-      // 如果這是「退回修正」的案件，先物理刪除原本的錯誤紀錄，防止序號 Unique 衝突
-      for (const d of devices) {
-        if (d.original_sn) {
-          await supabase.from("資產").delete().eq("產品序號", d.original_sn);
-        }
-      }
-
-      const { error } = await supabase.from("資產").insert(payload);
-      
-      if (error) {
-        if (error.code === "23505") showToast("提交失敗：序號已存在", "error");
-        else throw new Error(error.message);
-        return;
-      }
+      // 🚀 改用 Server Action 提交，徹底消滅 localhost 500 Method Not Allowed 錯誤
+      await submitAssetBatch(payload);
 
       setDevices([{ type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }]);
       showToast("預約錄入成功，已送交資訊中心", "success");
       setActiveTab("progress");
     } catch (err: any) {
+      console.error("提交失敗", err);
       showToast(`寫入失敗: ${err.message}`, "error");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- 撤回申請 ---
   const handleDeletePending = async (sn: string) => {
     if (!confirm("確定要撤回此筆預約申請嗎？")) return;
     setIsLoading(true);
@@ -147,7 +156,6 @@ export default function KeyinPage() {
     }
   };
 
-  // --- 載入退回修正 ---
   const handleLoadFix = async (sn: string) => {
     setIsLoading(true);
     try {
@@ -170,7 +178,7 @@ export default function KeyinPage() {
         mac: data.主要mac || "",
         mac2: data.無線mac || "",
         remark: data.備註 || "",
-        original_sn: data.產品序號 // 標記原始序號，以便提交時對沖
+        original_sn: data.產品序號 
       }]);
       
       setActiveTab("entry");
@@ -182,7 +190,6 @@ export default function KeyinPage() {
     }
   };
 
-  // --- 廠商確認結案 ---
   const handleConfirm = async (sn: string) => {
     if (!confirm("確認已完成現場設定並要歸檔此案件嗎？")) return;
     setIsLoading(true);
@@ -262,7 +269,7 @@ export default function KeyinPage() {
                           <div className={styles.rowGrid}>
                             <div><label className={styles.inputLabel}>設備類型</label><select value={d.type} onChange={e => { const nd = [...devices]; nd[i].type = e.target.value; setDevices(nd); }} className={styles.crystalInput}><option>桌上型電腦</option><option>筆記型電腦</option><option>印表機</option><option>醫療儀器</option><option>其他設備</option></select></div>
                             <div><label className={styles.inputLabel}>品牌型號</label><input placeholder="品牌型號" value={d.model} onChange={e => { const nd = [...devices]; nd[i].model = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
-                            <div><label className={styles.inputLabel}>產品序號 (S/N)</label><input placeholder="S/N" value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
+                            <div><label className={styles.inputLabel}>產品序號 (S/N)</label><input placeholder="留空將自動產生" value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
                           </div>
                           <div className={styles.rowGrid}>
                             <div><label className={styles.inputLabel}>主要 MAC</label><input placeholder="有線 MAC" value={d.mac} onChange={e => handleMacInput(i, e.target.value, "mac")} className={`${styles.crystalInput} font-mono text-blue-600`} /></div>
@@ -290,8 +297,10 @@ export default function KeyinPage() {
                   <div className="flex items-center gap-2"><span className={`material-symbols-outlined text-amber-500 ${styles.iconFill}`}>hourglass_empty</span><h2 className="text-lg font-bold text-slate-800 tracking-tight">廠商案件總覽 (含歷史)</h2></div>
                   <button onClick={() => fetchPendingRecords(vendorName)} className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 hover:text-blue-600 transition-colors bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm"><span className="material-symbols-outlined text-sm">sync</span> 重新整理</button>
                 </div>
-                <div className="overflow-x-auto w-full flex-1">
-                  <table className="w-full text-left min-w-[900px]">
+                
+                {/* 🚀 套用 mobileCard 樣式與 data-label，實現無捲軸的直向堆疊 */}
+                <div className={styles.tableContainer}>
+                  <table className={`w-full text-left min-w-[900px] ${styles.responsiveTable}`}>
                     <thead>
                       <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
                         <th className="pb-4 px-4">產品序號 (S/N)</th>
@@ -304,24 +313,24 @@ export default function KeyinPage() {
                     <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                       {pendingRecords.map((record, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/50 transition-all">
-                          <td className="p-4 font-mono text-xs text-slate-500 align-top">{record.sn}</td>
-                          <td className="p-4 font-bold align-top">
+                          <td className="p-4 font-mono text-xs text-slate-500 align-top" data-label="產品序號 (S/N)">
+                            {record.sn}
+                          </td>
+                          <td className="p-4 font-bold align-top" data-label="部署單位 / 棟別">
                             <p className="text-slate-800">{record.unit}</p>
                             <p className="text-[10px] text-slate-400 font-normal uppercase mt-0.5">{record.area} | {record.floor} | {record.date}</p>
                             <p className="text-[10px] text-slate-500 font-normal mt-0.5">{record.applicantName} #{record.applicantExt}</p>
                           </td>
-                          <td className="p-4 align-top">
+                          <td className="p-4 align-top" data-label="設備參數 / IP狀態">
                             <p className="font-bold text-slate-600">{record.model}</p>
                             <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">MAC: <span className="font-black text-blue-600">{record.mac1}</span></p>
-                            {/* 當有配發 IP 時顯示 */}
                             {record.assignedIp && (
                               <p className="text-[10px] font-bold text-emerald-600 mt-1.5 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-100">
                                 核發 IP: {record.assignedIp}
                               </p>
                             )}
                           </td>
-                          <td className="p-4 align-top">
-                            {/* 🚀 動態狀態矩陣 */}
+                          <td className="p-4 align-top" data-label="案件狀態">
                             {record.status === '待核定' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">審核中</span>}
                             
                             {record.status === '已退回(待修正)' && (
@@ -337,9 +346,8 @@ export default function KeyinPage() {
 
                             {record.status === '已結案' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm">歸檔完畢</span>}
                           </td>
-                          <td className="p-4 align-top text-right">
-                            <div className="flex flex-col items-end gap-2">
-                               {/* 🚀 動態按鈕矩陣 */}
+                          <td className="p-4 align-top text-right" data-label="管理操作">
+                            <div className={`flex flex-col items-end gap-2 ${styles.mobileActionStack}`}>
                                {record.status === '待核定' && (
                                  <button onClick={() => handleDeletePending(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-slate-200 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all shadow-sm bg-white">撤回申請</button>
                                )}
@@ -357,7 +365,7 @@ export default function KeyinPage() {
                                )}
 
                                {record.status === '已結案' && (
-                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">不適用操作</span>
+                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-full md:w-auto">不適用操作</span>
                                )}
                             </div>
                           </td>
