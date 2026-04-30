@@ -9,12 +9,12 @@ import styles from "./keyin.module.css";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.2 行動優化與自動 SN 防錯版
+ * 狀態：V400.3 行動完美優化版
  * 職責：
  * 1. 預約錄入：支援 MAC 格式化與防呆。
  * 2. 狀態矩陣：動態支援 [待核定, 已退回(待修正), 已核定(待確認), 已結案]。
  * 3. 自動 SN：留空時自動產生 AUTO-YYYYMMDD-HEX 格式序號。
- * 4. RWD 卡片化：消滅手機版橫向捲軸，改用直列卡片顯示資料表。
+ * 4. RWD 卡片化修復：消滅 min-w-[900px] 的強制寬度，徹底實現手機版卡片直向堆疊無捲軸。
  * 5. 500 修復：改用 Server Action (submitAssetBatch) 進行表單提交。
  * ==========================================
  */
@@ -300,8 +300,9 @@ export default function KeyinPage() {
                 
                 {/* 🚀 套用 mobileCard 樣式與 data-label，實現無捲軸的直向堆疊 */}
                 <div className={styles.tableContainer}>
-                  <table className={`w-full text-left min-w-[900px] ${styles.responsiveTable}`}>
-                    <thead>
+                  {/* 物理修正：將 min-w-[900px] 改為 lg:min-w-[900px] 避免強制撐開手機版 */}
+                  <table className={`w-full text-left lg:min-w-[900px] ${styles.responsiveTable}`}>
+                    <thead className={styles.desktopOnly}>
                       <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
                         <th className="pb-4 px-4">產品序號 (S/N)</th>
                         <th className="pb-4 px-4">部署單位 / 棟別</th>
@@ -312,16 +313,16 @@ export default function KeyinPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                       {pendingRecords.map((record, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/50 transition-all">
-                          <td className="p-4 font-mono text-xs text-slate-500 align-top" data-label="產品序號 (S/N)">
+                        <tr key={idx} className={`${styles.mobileCard} hover:bg-slate-50/50 transition-all`}>
+                          <td className={`${styles.mobileTd} p-4 font-mono text-xs text-slate-500 align-top`} data-label="產品序號 (S/N)">
                             {record.sn}
                           </td>
-                          <td className="p-4 font-bold align-top" data-label="部署單位 / 棟別">
+                          <td className={`${styles.mobileTd} p-4 font-bold align-top`} data-label="部署單位 / 棟別">
                             <p className="text-slate-800">{record.unit}</p>
                             <p className="text-[10px] text-slate-400 font-normal uppercase mt-0.5">{record.area} | {record.floor} | {record.date}</p>
                             <p className="text-[10px] text-slate-500 font-normal mt-0.5">{record.applicantName} #{record.applicantExt}</p>
                           </td>
-                          <td className="p-4 align-top" data-label="設備參數 / IP狀態">
+                          <td className={`${styles.mobileTd} p-4 align-top`} data-label="設備參數 / IP狀態">
                             <p className="font-bold text-slate-600">{record.model}</p>
                             <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">MAC: <span className="font-black text-blue-600">{record.mac1}</span></p>
                             {record.assignedIp && (
@@ -330,7 +331,7 @@ export default function KeyinPage() {
                               </p>
                             )}
                           </td>
-                          <td className="p-4 align-top" data-label="案件狀態">
+                          <td className={`${styles.mobileTd} p-4 align-top`} data-label="案件狀態">
                             {record.status === '待核定' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">審核中</span>}
                             
                             {record.status === '已退回(待修正)' && (
@@ -346,26 +347,26 @@ export default function KeyinPage() {
 
                             {record.status === '已結案' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm">歸檔完畢</span>}
                           </td>
-                          <td className="p-4 align-top text-right" data-label="管理操作">
-                            <div className={`flex flex-col items-end gap-2 ${styles.mobileActionStack}`}>
+                          <td className={`${styles.mobileTd} p-4 align-top lg:text-right`} data-label="管理操作">
+                            <div className={`flex flex-col lg:items-end gap-2 ${styles.mobileActionStack}`}>
                                {record.status === '待核定' && (
                                  <button onClick={() => handleDeletePending(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-slate-200 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-200 transition-all shadow-sm bg-white">撤回申請</button>
                                )}
                                
                                {record.status === '已退回(待修正)' && (
-                                 <button onClick={() => handleLoadFix(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm bg-white flex items-center gap-1">
+                                 <button onClick={() => handleLoadFix(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 hover:border-amber-300 transition-all shadow-sm bg-white flex items-center justify-center lg:justify-start gap-1">
                                    <span className="material-symbols-outlined text-[14px]">edit_document</span> 載入修正
                                  </button>
                                )}
 
                                {record.status === '已核定(待確認)' && (
-                                 <button onClick={() => handleConfirm(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-transparent text-white bg-emerald-500 rounded-xl hover:bg-emerald-600 transition-all shadow-sm flex items-center gap-1">
+                                 <button onClick={() => handleConfirm(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2 border border-transparent text-white bg-emerald-500 rounded-xl hover:bg-emerald-600 transition-all shadow-sm flex items-center justify-center lg:justify-start gap-1">
                                    <span className="material-symbols-outlined text-[14px]">verified</span> 確認結案
                                  </button>
                                )}
 
                                {record.status === '已結案' && (
-                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-full md:w-auto">不適用操作</span>
+                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-full lg:w-auto">不適用操作</span>
                                )}
                             </div>
                           </td>
