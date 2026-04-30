@@ -7,12 +7,32 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V400.0 終極完整無刪減版
+ * 狀態：V400.6 伺服器端權限守門員 (100% 全功能完整版)
  * 職責：
- * 1. 保留所有跨頁面呼叫的 Server Actions (0刪除)。
- * 2. 包含最新版防呆與 .select() 驗證的核發/退回功能。
+ * 1. 物理防護：新增 verifyVendorAuth 函式，每次操作前查核 vendors 狀態。
+ * 2. 零刪減：保留所有跨頁面呼叫的 Server Actions (含內部直通、刪除等)。
+ * 3. 穩定防呆：包含最新版防呆、trim() 去除空白與 .select() 驗證的核發/退回功能。
  * ==========================================
  */
+
+// --- 0. 廠商權限驗證 (物理守門員) ---
+async function verifyVendorAuth(vendorName: string) {
+  if (!vendorName) throw new Error("缺少廠商識別名稱，拒絕存取");
+  
+  const { data, error } = await supabase
+    .from("vendors")
+    .select("授權啟用開關, 行政狀態")
+    .eq("廠商名稱", vendorName)
+    .single();
+    
+  if (error || !data) {
+    throw new Error(`無法驗證廠商身分 [${vendorName}]，可能該廠商不存在於資料庫。`);
+  }
+  
+  if (data.授權啟用開關 !== true || data.行政狀態 !== '正常') {
+    throw new Error(`【存取拒絕】廠商 [${vendorName}] 帳號已停權或停用，系統禁止操作。`);
+  }
+}
 
 // --- 1. IP 衝突檢查 (包含歷史庫與現行庫) ---
 export async function checkIpConflict(ip: string) {
@@ -60,7 +80,7 @@ export async function deleteAssetAdmin(sn: string) {
   return { success: true };
 }
 
-// --- 4. 取得待核定清單 (保留給舊模組使用，Pending 頁面已改為前端直連) ---
+// --- 4. 取得待核定清單 ---
 export async function getAdminPendingData() {
   noStore();
   const { data, error } = await supabase
@@ -90,7 +110,7 @@ export async function getAdminPendingData() {
   }));
 }
 
-// --- 5. 行政核發資產 (最新強固版) ---
+// --- 5. 行政核發資產 ---
 export async function approveAsset(sn: string, ip: string, deviceName: string, type: string) {
   const cleanSn = sn.trim();
   const cleanIp = ip.trim();
@@ -119,7 +139,7 @@ export async function approveAsset(sn: string, ip: string, deviceName: string, t
   }
 }
 
-// --- 6. 行政退回案件 (最新強固版) ---
+// --- 6. 行政退回案件 ---
 export async function rejectAsset(sn: string, reason: string) {
   const cleanSn = sn.trim();
   const cleanReason = reason.trim();
@@ -148,6 +168,10 @@ export async function rejectAsset(sn: string, reason: string) {
 // --- 7. 取得廠商進度 (供 /keyin 使用) ---
 export async function getVendorProgress(vendor: string) {
   noStore();
+  
+  // 🚀 安全攔截：檢查廠商是否有權限讀取資料
+  await verifyVendorAuth(vendor);
+
   const filterDateStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   const [activeRes, histRes] = await Promise.all([
@@ -189,6 +213,9 @@ export async function vendorConfirmAsset(sn: string) {
   const { data: asset, error: fetchErr } = await supabase.from("資產").select("*").eq("產品序號", sn).single();
   if (fetchErr || !asset) throw new Error("找不到該核定案件");
   
+  // 🚀 安全攔截：檢查結案廠商是否有權限操作
+  await verifyVendorAuth(asset.來源廠商);
+
   const isReplace = String(asset.備註 || "").includes("[REPLACE]");
   const { error: insertErr } = await supabase.from("historical_assets").insert([{
     "結案單號": asset.案件編號, "裝機日期": asset.裝機日期, "棟別": asset.棟別, "樓層": asset.樓層,
@@ -206,14 +233,22 @@ export async function vendorConfirmAsset(sn: string) {
 
 // --- 9. 批次提交預約 ---
 export async function submitAssetBatch(batchData: any[]) {
+  if (!batchData || batchData.length === 0) return { success: true };
+
+  // 🚀 安全攔截：從資料列中抽出廠商名稱進行驗證
+  const vendorName = batchData[0].vendor || batchData[0].來源廠商;
+  await verifyVendorAuth(vendorName);
+
   for (const d of batchData) {
     if (d.original_sn) await supabase.from("資產").delete().eq("產品序號", d.original_sn);
   }
+  
   const insertData = batchData.map(d => ({
     "案件編號": d.form_id, "裝機日期": d.install_date, "棟別": d.area, "樓層": d.floor,
     "使用單位": d.unit, "姓名": d.applicantName, "分機": d.applicantExt, "品牌型號": d.model, "產品序號": d.sn,
     "主要mac": d.mac1, "無線mac": d.mac2, "備註": d.remark, "來源廠商": d.vendor, "狀態": d.status || "待核定"
   }));
+  
   const { error } = await supabase.from("資產").insert(insertData);
   if (error) throw new Error("預約資料提交失敗: " + error.message);
   return { success: true };
