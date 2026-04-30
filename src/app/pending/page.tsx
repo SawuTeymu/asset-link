@@ -2,216 +2,201 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { approveAsset, rejectAsset } from "@/lib/actions/assets";
+import { getAdminPendingData, approveAsset, rejectAsset, checkIpConflict } from "@/lib/actions/assets";
 
-//  物理導入同目錄樣式模組
 import styles from "./pending.module.css";
 
 /**
  * ==========================================
  * 檔案：src/app/pending/page.tsx
- * 狀態：V300.9 Medical M3 (RWD 手機模式完美版 + 零內聯樣式)
+ * 狀態：V300.46 姓名分機獨立顯示版
  * ==========================================
  */
 
 export default function PendingPage() {
   const router = useRouter();
-
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [pendingList, setPendingList] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [loaderText, setLoaderText] = useState("行政同步中...");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [pendingList, setPendingList] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" }[]>([]);
 
-  const showToast = useCallback((msg: string, type: "success" | "error" = "success") => {
+  const [processingSn, setProcessingSn] = useState<string | null>(null);
+  const [approvalData, setApprovalData] = useState({ ip: "", deviceName: "", type: "桌上型電腦" });
+  const [rejectReason, setRejectReason] = useState("");
+  const [ipConflictMsg, setIpConflictMsg] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string, type: "success" | "error") => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, msg, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
   const fetchPending = useCallback(async () => {
-    const isAuth = sessionStorage.getItem("asset_link_admin_auth");
-    if (isAuth !== "true") { router.push("/"); return; }
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.from("assets_pending").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
+      const data = await getAdminPendingData();
       setPendingList(data || []);
-    } catch { showToast("連線中斷", "error"); }
-    finally { setIsLoading(false); }
-  }, [router, showToast]);
+    } catch (err: any) {
+      showToast(err.message || "清單載入失敗，請檢查系統連線", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast]);
 
-  useEffect(() => { fetchPending(); }, [fetchPending]);
+  useEffect(() => {
+    const isAuth = sessionStorage.getItem("asset_link_admin_auth");
+    if (isAuth !== "true") { router.push("/"); return; }
+    fetchPending();
+  }, [router, fetchPending]);
 
-  const handleApprove = async (item: any) => {
-    setIsProcessing(true); setLoaderText("核定中...");
-    try {
-      await approveAsset(item.id, item.核定ip || "", item.主要mac || "", item.產品序號 || item.sn || "");
-      showToast("行政核定成功，已歸檔", "success"); fetchPending();
-    } catch { showToast("核定失敗：請檢查網路或參數", "error"); }
-    finally { setIsProcessing(false); }
+  const handleIpBlur = async () => {
+    if (!approvalData.ip) { setIpConflictMsg(null); return; }
+    const isConflicted = await checkIpConflict(approvalData.ip);
+    setIpConflictMsg(isConflicted ? `注意：IP ${approvalData.ip} 在系統中已被配發` : null);
   };
 
-  const handleReject = async (item: any) => {
-    if (!confirm("確定要物理退回此申請單？退回後資料將被銷毀。")) return;
-    setIsProcessing(true);
+  const handleApprove = async (sn: string) => {
+    if (!approvalData.ip || !approvalData.deviceName) { showToast("請完整填寫核定 IP 與設備名稱", "error"); return; }
+    setIsLoading(true);
     try {
-      await rejectAsset(item.id, "資訊室管理員退回");
-      showToast("案件已退回刪除", "error"); fetchPending();
-    } catch { showToast("退件失敗", "error"); }
-    finally { setIsProcessing(false); }
+      await approveAsset(sn, approvalData.ip, approvalData.deviceName, approvalData.type);
+      showToast("核發作業完成，案件已發還廠商確認", "success");
+      setProcessingSn(null);
+      setApprovalData({ ip: "", deviceName: "", type: "桌上型電腦" });
+      setIpConflictMsg(null);
+      fetchPending();
+    } catch (err: any) {
+      showToast(`核發失敗: ${err.message}`, "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReject = async (sn: string) => {
+    if (!rejectReason) { showToast("請填寫退回原因", "error"); return; }
+    setIsLoading(true);
+    try {
+      await rejectAsset(sn, rejectReason);
+      showToast("案件已退回給廠商修正", "success");
+      setProcessingSn(null);
+      setRejectReason("");
+      fetchPending();
+    } catch (err: any) {
+      showToast(`退回失敗: ${err.message}`, "error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="bg-[#faf8ff] text-slate-800 font-body-md antialiased min-h-screen flex relative overflow-x-hidden">
+    <div className={`min-h-screen text-slate-800 antialiased flex relative overflow-x-hidden ${styles.medicalGradient}`}>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+      {isMobileMenuOpen && <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-[45] md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>}
 
-      <div className={`${styles.bgGradientCustom} min-h-screen w-full fixed inset-0 -z-10`}></div>
-
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 bg-sky-900/20 backdrop-blur-sm z-[45] md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
-      )}
-
-      <aside className={`w-64 fixed left-0 top-0 z-50 h-screen border-r border-white/40 bg-white/70 backdrop-blur-2xl flex flex-col py-6 px-4 gap-2 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
-          <div className="flex items-center justify-between mb-8 px-2">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                <span className={`material-symbols-outlined ${styles.iconFill}`}>medical_services</span>
-              </div>
-              <div>
-                <h2 className="text-lg font-black text-sky-800 leading-tight">ERI 行政</h2>
-                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mt-1">臨床行政入口</p>
-              </div>
-            </div>
-            <button className="md:hidden text-slate-500" onClick={() => setIsMobileMenuOpen(false)}><span className="material-symbols-outlined">close</span></button>
+      <aside className={`w-64 fixed left-0 top-0 h-screen border-r border-white/40 ${styles.clinicalGlass} flex flex-col p-6 z-50 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+          <div className="flex items-center gap-3 mb-10 px-2">
+             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg"><span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1, 'wght' 400" }}>hub</span></div>
+             <h2 className="text-xl font-black text-sky-900 tracking-tighter uppercase">ALink 總控台</h2>
           </div>
-
-          <button onClick={() => router.push("/keyin")} className="mb-6 w-full py-3 px-4 bg-white border border-slate-200 text-blue-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
-            <span className="material-symbols-outlined text-sm">add_circle</span> 切換廠商端錄入
-          </button>
-
           <nav className="flex-1 space-y-2">
-              <button onClick={() => router.push("/admin")} className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/40 rounded-lg font-bold transition-all">
-                <span className="material-symbols-outlined">dashboard</span> 首頁儀表板
-              </button>
-              <button className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 text-white rounded-lg shadow-md font-bold">
-                <span className={`material-symbols-outlined ${styles.iconFill}`}>grid_view</span> 待核定矩陣
-              </button>
-              <button onClick={() => router.push("/nsr")} className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/40 rounded-lg font-bold transition-all">
-                <span className="material-symbols-outlined">payments</span> 網點財務對沖
-              </button>
-              <button onClick={() => router.push("/internal")} className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-white/40 rounded-lg font-bold transition-all">
-                <span className="material-symbols-outlined">lan</span> 內部直通對沖
-              </button>
+              <button onClick={() => router.push("/admin")} className="w-full text-left p-4 rounded-2xl font-bold text-slate-600 hover:bg-white/60 flex items-center gap-3 transition-all"><span className="material-symbols-outlined text-base">dashboard</span> 儀表板首頁</button>
+              <button className="w-full text-left p-4 rounded-2xl font-bold bg-blue-600 text-white shadow-md flex items-center gap-3 transition-all"><span className="material-symbols-outlined text-base">assignment_turned_in</span> 行政審核</button>
+              <button onClick={() => router.push("/nsr")} className="w-full text-left p-4 rounded-2xl font-bold text-slate-600 hover:bg-white/60 flex items-center gap-3 transition-all"><span className="material-symbols-outlined text-base">account_balance_wallet</span> 網點計價結算</button>
+              <button onClick={() => router.push("/internal")} className="w-full text-left p-4 rounded-2xl font-bold text-slate-600 hover:bg-white/60 flex items-center gap-3 transition-all"><span className="material-symbols-outlined text-base">bolt</span> 內部直通入庫</button>
           </nav>
+          <div className="mt-auto pt-6 border-t border-slate-200/50"><button onClick={() => router.push("/")} className="w-full flex items-center gap-3 p-4 text-slate-400 font-bold hover:text-red-600 transition-colors"><span className="material-symbols-outlined text-base">logout</span> 登出系統</button></div>
       </aside>
 
       <main className="w-full md:ml-64 flex-1 flex flex-col min-h-screen">
-        <header className="sticky top-0 z-30 w-full bg-white/70 backdrop-blur-lg border-b border-slate-200/50 shadow-sm px-4 md:px-8 h-16 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-sky-800 p-1"><span className="material-symbols-outlined">menu</span></button>
-            <h1 className="text-lg md:text-xl font-bold tracking-tight text-sky-800">ERI 待核定中樞</h1>
-          </div>
-          <div className="flex items-center gap-3 md:gap-6">
-            <div className="hidden md:flex relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
-              <input className="bg-white/60 border border-slate-200 rounded-full py-1.5 pl-10 pr-4 text-sm w-64 focus:ring-2 focus:ring-blue-500/20 outline-none" placeholder="搜尋案件或廠商..." type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-            </div>
-            <button className="text-slate-500 hover:text-blue-600"><span className="material-symbols-outlined">notifications</span></button>
-          </div>
+        <header className="px-6 py-5 bg-white/60 backdrop-blur-xl border-b border-slate-200/50 sticky top-0 z-30 flex items-center justify-between shadow-sm">
+           <div className="flex items-center gap-4">
+             <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-sky-800 p-1"><span className="material-symbols-outlined">menu</span></button>
+             <h1 className="text-lg font-black text-sky-800 uppercase tracking-widest">Administrative Approval</h1>
+           </div>
+           <button onClick={fetchPending} className="text-slate-400 hover:text-blue-600 transition-colors bg-white p-2 rounded-lg border border-slate-100 shadow-sm flex items-center gap-2 text-xs font-bold"><span className="material-symbols-outlined text-sm">sync</span> 資料更新</button>
         </header>
 
-        <div className="p-4 md:p-8 w-full max-w-[1440px] mx-auto flex-1">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 md:mb-8 animate-in fade-in duration-700">
-            <div>
-              <div className="flex items-center gap-2 text-blue-600 font-bold mb-1"><span className="material-symbols-outlined text-sm">folder_open</span><span className="text-xs tracking-widest uppercase">系統代碼 V300.9</span></div>
-              <h2 className="text-2xl md:text-3xl font-black text-slate-800">待核定案件矩陣</h2>
-              <p className="text-sm text-slate-500 mt-1">目前共有 {pendingList.length} 件資產預約核定事項等待處理</p>
-            </div>
-            <div className="flex gap-2">
-              <button className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 shadow-sm text-sm"><span className="material-symbols-outlined text-sm">filter_list</span> 篩選</button>
-            </div>
+        <div className="p-6 md:p-10 max-w-[1200px] mx-auto w-full flex-1">
+          <div className="mb-8">
+            <h2 className="text-3xl font-black text-slate-800 tracking-tight">待核定案件清單</h2>
+            <p className="text-sm text-slate-500 font-bold mt-2 uppercase tracking-widest">廠商預約審查與網路參數配置</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-in slide-in-from-bottom-8 duration-1000">
-             <div className={`${styles.clinicalGlass} ${styles.innerGlow} rounded-2xl p-6 relative shadow-sm col-span-1 sm:col-span-2 lg:col-span-1`}>
-                <div className="absolute -right-8 -top-8 w-32 h-32 bg-blue-100/50 rounded-full blur-2xl"></div>
-                <div className="relative z-10 space-y-4">
-                  <h3 className="font-bold text-sky-900 mb-4">狀態實時統計</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-end"><span className="text-sm text-slate-600 font-bold">已處理</span><span className="text-xl font-black text-emerald-600">82%</span></div>
-                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 w-[82%]"></div></div>
-                    <div className="flex justify-between pt-2 border-t border-slate-200"><span className="text-sm text-slate-600 font-bold">目前待辦</span><span className="text-sm font-black text-blue-600">{pendingList.length} 件</span></div>
-                  </div>
-                </div>
-             </div>
+          <div className="space-y-6">
+            {pendingList.length === 0 && !isLoading && (
+              <div className={`${styles.clinicalGlass} rounded-3xl p-12 text-center shadow-sm`}>
+                <span className="material-symbols-outlined text-4xl text-slate-300 mb-4">check_circle</span>
+                <p className="text-slate-400 font-bold tracking-widest uppercase">目前所有案件皆已處理完畢</p>
+              </div>
+            )}
 
-             {pendingList.length === 0 ? (
-                <div className={`sm:col-span-2 ${styles.clinicalGlass} rounded-2xl p-12 flex flex-col items-center justify-center text-slate-400 border-dashed border-2`}>
-                    <span className="material-symbols-outlined text-5xl mb-4 text-emerald-400">task_alt</span>
-                    <p className="font-bold text-slate-600">目前無待核定資產，系統已淨空</p>
+            {pendingList.map((item) => (
+              <div key={item.sn} className={`${styles.clinicalGlass} rounded-3xl p-6 shadow-sm flex flex-col md:flex-row gap-6 transition-all hover:border-blue-200`}>
+                
+                <div className="flex-1 space-y-4 border-b md:border-b-0 md:border-r border-slate-200/60 pb-6 md:pb-0 md:pr-6">
+                   <div className="flex items-center justify-between mb-4">
+                     <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest rounded-lg border border-blue-200">{item.vendor}</span>
+                     <span className="text-xs font-bold text-slate-400">{item.date}</span>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4">
+                     <div>
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">部署單位</p>
+                       <p className="font-bold text-slate-800">{item.unit}</p>
+                       <p className="text-xs text-slate-500">{item.area} {item.floor}</p>
+                     </div>
+                     {/* 🚀 這裡顯示已分離的姓名與分機 */}
+                     <div>
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">聯絡人員</p>
+                       <p className="font-bold text-slate-800">{item.applicantName} <span className="text-slate-400 text-xs font-normal">#{item.applicantExt}</span></p>
+                     </div>
+                     <div className="col-span-2 mt-2">
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">設備硬體參數</p>
+                       <p className="font-bold text-slate-800">{item.model} <span className="text-xs text-slate-400 font-normal">({item.status})</span></p>
+                       <p className="text-xs font-mono text-red-600 font-bold mt-1">S/N: {item.sn}</p>
+                       <p className="text-xs font-mono text-blue-600 font-bold">主要 MAC: {item.mac1}</p>
+                       {item.remark && <p className="text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-md border border-slate-100">備註：{item.remark}</p>}
+                     </div>
+                   </div>
                 </div>
-             ) : (
-                pendingList.map((item, idx) => (
-                  <div key={`eri-${item.id}`} className={`${styles.clinicalGlass} ${styles.innerGlow} rounded-2xl p-5 md:p-6 flex flex-col justify-between hover:shadow-xl transition-all hover:-translate-y-1 bg-white/40 group`}>
-                    <div className="space-y-4 md:space-y-5">
-                      <div className="flex justify-between items-start">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${idx === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {idx === 0 ? 'Urgent Priority' : 'Normal Priority'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono truncate max-w-[100px]">{item.id}</span>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">來源廠商 / 使用單位</label>
-                        <p className="font-black text-lg text-slate-800 leading-tight group-hover:text-blue-600 transition-colors">{item.廠商名稱 || "內部直通"}</p>
-                        <p className="text-sm font-bold text-sky-700 mt-1 truncate">{item.使用單位}</p>
-                      </div>
-                      <div className="p-3 bg-white/60 rounded-xl border border-slate-200">
-                        <label className="text-[10px] font-black text-slate-500 block mb-2 uppercase">網路核定參數</label>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center"><span className="text-[10px] text-slate-500 font-bold">核定 IP</span><code className="text-sm font-black text-blue-600 font-mono">{item.核定ip}</code></div>
-                          <div className="flex justify-between items-center"><span className="text-[10px] text-slate-500 font-bold">規格</span><span className="text-[11px] font-bold text-slate-700 truncate max-w-[100px]">{item.設備類型}</span></div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-6 flex gap-2">
-                      <button 
-                        id={`rej-${idx}-${Math.random().toString(36).substr(2, 4)}`}
-                        onClick={() => handleReject(item)}
-                        className="flex-1 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 transition-all"
-                      >
-                        退回
+
+                <div className="w-full md:w-[380px] flex flex-col justify-center">
+                  {processingSn !== item.sn && processingSn !== `reject_${item.sn}` ? (
+                    <div className="flex flex-col gap-3">
+                      <button onClick={() => { setProcessingSn(item.sn); setApprovalData({ ip: "", deviceName: item.sn, type: item.model.includes('印表') ? '印表機' : '桌上型電腦' }); }} className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-[0.2em] text-xs shadow-md hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                        <span className="material-symbols-outlined text-sm">verified_user</span> 進行核發作業
                       </button>
-                      <button 
-                        id={`app-${idx}-${Math.random().toString(36).substr(2, 4)}`}
-                        onClick={() => handleApprove(item)}
-                        className="flex-[2] py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs shadow-md hover:bg-emerald-500 active:scale-95 transition-all flex items-center justify-center gap-1"
-                      >
-                        <span className={`material-symbols-outlined text-sm ${styles.iconFill}`}>verified</span>
-                        核定結案
+                      <button onClick={() => { setProcessingSn(`reject_${item.sn}`); setRejectReason(""); }} className="w-full py-3 bg-white border border-slate-200 text-red-500 rounded-xl font-black uppercase tracking-[0.2em] text-xs hover:bg-red-50 transition-all flex items-center justify-center gap-2">
+                        <span className="material-symbols-outlined text-sm">assignment_return</span> 退回修正
                       </button>
                     </div>
-                  </div>
-                ))
-             )}
+                  ) : processingSn === item.sn ? (
+                    <div className="space-y-4 p-5 bg-white/60 rounded-2xl border border-blue-200 shadow-sm">
+                      <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">核定 IP 地址</label><input value={approvalData.ip} onChange={e => setApprovalData({...approvalData, ip: e.target.value})} onBlur={handleIpBlur} className={styles.crystalInput} placeholder="10.X.X.X" />{ipConflictMsg && <p className="text-[10px] text-red-500 font-bold mt-1.5 animate-pulse">{ipConflictMsg}</p>}</div>
+                      <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">系統登錄名稱</label><input value={approvalData.deviceName} onChange={e => setApprovalData({...approvalData, deviceName: e.target.value.toUpperCase()})} className={styles.crystalInput} /></div>
+                      <div className="flex gap-2 pt-2"><button onClick={() => handleApprove(item.sn)} disabled={isLoading || !!ipConflictMsg} className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-bold text-xs shadow-md hover:bg-blue-700 disabled:opacity-50 transition-colors">確認核發</button><button onClick={() => setProcessingSn(null)} className="py-2.5 px-4 bg-slate-200 text-slate-700 rounded-lg font-bold text-xs hover:bg-slate-300 transition-colors">取消</button></div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 p-5 bg-white/60 rounded-2xl border border-red-200 shadow-sm">
+                      <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">退回原因說明</label><textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} className={`${styles.crystalInput} min-h-[80px] resize-none`} placeholder="請簡述需要廠商修正的問題..." /></div>
+                      <div className="flex gap-2 pt-2"><button onClick={() => handleReject(item.sn)} disabled={isLoading} className="flex-1 py-2.5 bg-red-500 text-white rounded-lg font-bold text-xs shadow-md hover:bg-red-600 disabled:opacity-50 transition-colors">確認退回</button><button onClick={() => setProcessingSn(null)} className="py-2.5 px-4 bg-slate-200 text-slate-700 rounded-lg font-bold text-xs hover:bg-slate-300 transition-colors">取消</button></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </main>
 
-      {(isLoading || isProcessing) && (
-        <div className="fixed inset-0 z-[6000] flex flex-col items-center justify-center bg-white/60 backdrop-blur-md">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-4 shadow-sm"></div>
-          <p className="text-blue-600 font-black tracking-widest text-[10px] uppercase animate-pulse">{loaderText}</p>
-        </div>
+      {isLoading && (
+        <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">系統資料處理中...</p></div>
       )}
 
-      <div className="fixed bottom-6 right-4 md:bottom-10 md:right-8 z-[7000] flex flex-col gap-3">
+      <div className="fixed bottom-10 right-8 z-[9000] flex flex-col gap-3">
         {toasts.map(t => (
-          <div key={t.id} className={`px-4 md:px-6 py-3 rounded-xl shadow-lg font-bold text-xs animate-in slide-in-from-right-4 flex items-center gap-2 border ${t.type === "success" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
-            <span className={`material-symbols-outlined text-base ${styles.iconFill}`}>{t.type === 'success' ? 'check_circle' : 'error'}</span>
+          <div key={t.id} className={styles.toastBase}>
+            <span className="material-symbols-outlined text-sm">{t.type === 'success' ? 'check_circle' : 'report'}</span> 
             <span className="tracking-wide">{t.msg}</span>
           </div>
         ))}
