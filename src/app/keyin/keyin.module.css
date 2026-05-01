@@ -1,5 +1,5 @@
 /* src/app/keyin/keyin.module.css */
-/* Keyin 專用物理樣式矩陣 - V400.4 手機版真獨立框卡片版 */
+/* Keyin 專用物理樣式矩陣 - V400.6 穩定版與帳號管理擴充 */
 
 .medicalGradient {
     background: radial-gradient(circle at top left, #f0fdf4 0%, #faf8ff 50%, #eef6ff 100%);
@@ -33,7 +33,7 @@
     background: #ffffff;
 }
 
-/* 用於設備填寫區與手機版進度卡片的共通獨立框 */
+/* 設備填寫區、手機版進度卡片、與帳號管理共用之獨立外框 */
 .deviceItemBlock {
     background: rgba(255, 255, 255, 0.4);
     border: 1px solid rgba(226, 232, 240, 0.8);

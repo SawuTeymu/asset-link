@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 /**
  * 🚀 帳號管理控制中樞
  * 物理職責：負責 profiles 表的增刪改查與狀態切換
- * 升級狀態：V1.2 加入廠商專屬登入密碼驗證 (修正 TypeScript ParserError)
+ * 升級狀態：V1.4 加入強制更新密碼功能 (確保 updateVendorPassword 成功匯出)
  */
 
 export async function getAllUsers() {
@@ -86,4 +86,30 @@ export async function verifyVendorLogin(vendorName: string, password: string) {
 
   // 驗證通過
   return { success: true, vendorName: vendorData.廠商名稱 };
+}
+
+/**
+ * 🚀 廠商更新專屬密碼 (強制解鎖機制)
+ */
+export async function updateVendorPassword(vendorName: string, newPassword: string) {
+  if (!vendorName || !newPassword) {
+    return { success: false, message: "參數不完整" };
+  }
+
+  try {
+    const { error } = await supabase
+      .from("vendors")
+      .update({ "密碼": newPassword })
+      .eq("廠商名稱", vendorName);
+
+    if (error) {
+      console.error("更新密碼失敗:", error.message);
+      return { success: false, message: "資料庫寫入失敗，請稍後再試" };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("更新密碼發生異常:", err);
+    return { success: false, message: "系統連線異常" };
+  }
 }

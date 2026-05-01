@@ -7,11 +7,11 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V400.8 伺服器端權限守門員 (TS2352 物理修復版)
+ * 狀態：V400.9 終極完美防護版 (UX與安全雙重升級)
  * 職責：
- * 1. 物理防護：新增 verifyVendorAuth 函式，每次操作前查核 vendors 狀態。
- * 2. 型別修復：透過 unknown 橋接轉換，徹底消滅 Supabase ParserError 編譯錯誤。
- * 3. 零刪減：保留所有跨頁面呼叫的 Server Actions (含內部直通、刪除等)。
+ * 1. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼 (123456) 的讀寫操作。
+ * 2. 型別修復：透過 unknown 橋接轉換，徹底消滅 Supabase ParserError。
+ * 3. 報錯優化：捕捉 23505 (Unique Violation) 錯誤，轉換為友善的中文提示。
  * ==========================================
  */
 
@@ -21,7 +21,7 @@ async function verifyVendorAuth(vendorName: string) {
   
   const { data, error } = await supabase
     .from("vendors")
-    .select("授權啟用開關, 行政狀態")
+    .select("授權啟用開關, 行政狀態, 密碼")
     .eq("廠商名稱", vendorName)
     .single();
     
@@ -29,11 +29,15 @@ async function verifyVendorAuth(vendorName: string) {
     throw new Error(`無法驗證廠商身分 [${vendorName}]，可能該廠商不存在於資料庫。`);
   }
   
-  // 🚀 物理修復：透過 unknown 橋接強制轉型，繞過 TypeScript TS2352 的嚴格檢查
-  const vendorData = data as unknown as { 授權啟用開關: boolean; 行政狀態: string; };
+  const vendorData = data as unknown as { 授權啟用開關: boolean; 行政狀態: string; 密碼: string; };
   
   if (vendorData.授權啟用開關 !== true || vendorData.行政狀態 !== '正常') {
     throw new Error(`【存取拒絕】廠商 [${vendorName}] 帳號已停權或停用，系統禁止操作。`);
+  }
+
+  // 🚀 物理修補：如果密碼還是預設的 123456，後端直接拒絕任何資產庫的讀寫操作，防止前端機制被駭客繞過
+  if (vendorData.密碼 === '123456') {
+    throw new Error(`【安全鎖定】您仍在使用預設密碼，為確保資安，請先至「帳號安全」完成密碼修改。`);
   }
 }
 
@@ -42,11 +46,9 @@ export async function checkIpConflict(ip: string) {
   const cleanIp = ip.trim();
   if (!cleanIp) return false;
   
-  // 檢查歷史結案庫
   const { data: archive } = await supabase.from("historical_assets").select("*").eq("核定ip", cleanIp).maybeSingle();
   if (archive) return true;
   
-  // 檢查現行資產庫
   const { data: active } = await supabase.from("資產").select("*").eq("核定ip", cleanIp).maybeSingle();
   return !!active;
 }
@@ -70,7 +72,12 @@ export async function submitInternalIssue(payload: any) {
     "狀態": "已結案"
   }]);
   
-  if (error) throw new Error("入庫寫入失敗: " + error.message);
+  if (error) {
+    // 🚀 UX優化：捕捉重複寫入
+    if (error.code === '23505') throw new Error("該產品序號 (S/N) 已經結案歸檔，不可重複直通入庫。");
+    throw new Error("入庫寫入失敗: " + error.message);
+  }
+  
   await logAction("SYSTEM_ADMIN", `執行內部直通結案 (SN: ${payload.sn})`);
   return true;
 }
@@ -171,8 +178,6 @@ export async function rejectAsset(sn: string, reason: string) {
 // --- 7. 取得廠商進度 (供 /keyin 使用) ---
 export async function getVendorProgress(vendor: string) {
   noStore();
-  
-  // 🚀 安全攔截：檢查廠商是否有權限讀取資料
   await verifyVendorAuth(vendor);
 
   const filterDateStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -216,7 +221,6 @@ export async function vendorConfirmAsset(sn: string) {
   const { data: asset, error: fetchErr } = await supabase.from("資產").select("*").eq("產品序號", sn).single();
   if (fetchErr || !asset) throw new Error("找不到該核定案件");
   
-  // 🚀 安全攔截：檢查結案廠商是否有權限操作
   await verifyVendorAuth(asset.來源廠商);
 
   const isReplace = String(asset.備註 || "").includes("[REPLACE]");
@@ -238,7 +242,6 @@ export async function vendorConfirmAsset(sn: string) {
 export async function submitAssetBatch(batchData: any[]) {
   if (!batchData || batchData.length === 0) return { success: true };
 
-  // 🚀 安全攔截：從資料列中抽出廠商名稱進行驗證
   const vendorName = batchData[0].vendor || batchData[0].來源廠商;
   await verifyVendorAuth(vendorName);
 
@@ -253,6 +256,14 @@ export async function submitAssetBatch(batchData: any[]) {
   }));
   
   const { error } = await supabase.from("資產").insert(insertData);
-  if (error) throw new Error("預約資料提交失敗: " + error.message);
+  
+  if (error) {
+    // 🚀 UX優化：攔截 23505 錯誤，轉譯為友善提示
+    if (error.code === '23505') {
+      throw new Error("系統已存在相同產品序號 (S/N) 的紀錄，請檢查是否重複提交。");
+    }
+    throw new Error("預約資料提交失敗: " + error.message);
+  }
+  
   return { success: true };
 }

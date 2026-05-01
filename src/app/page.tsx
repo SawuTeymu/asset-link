@@ -9,12 +9,12 @@ import { verifyVendorLogin } from "@/lib/actions/users";
 /**
  * ==========================================
  * 檔案：src/app/page.tsx
- * 狀態：V2.9.3 白話專業純淨版 (TypeScript 物理修復)
+ * 狀態：V2.9.5 白話專業純淨版 (終極觸發修復)
  * 物理職責：
  * 1. 提示詞優化：將太過火的「中樞」改回標準且順耳的「系統」，維持企業級信任感。
  * 2. 效能優化：徹底拔除 Tailwind CDN 腳本，交由全域編譯引擎接管，消滅黃字報警。
  * 3. 廠商防護：加入廠商專屬密碼輸入框，並串接伺服器端驗證。
- * 4. 物理修復：修復 setErrorMsg 遇到 undefined 屬性時的 TS2345 嚴格型別錯誤。
+ * 4. 觸發修復：物理寫入 asset_link_vendor_default_pwd 標記，確保強制密碼更新畫面能正確彈出。
  * ==========================================
  */
 
@@ -109,9 +109,16 @@ export default function LoginPage() {
       
       if (res.success) {
         sessionStorage.setItem("asset_link_vendor", selectedVendor);
+        
+        // 🚀 物理修復：如果廠商使用預設密碼登入，寫入強制更新標記
+        if (vendorPassword === "123456") {
+          sessionStorage.setItem("asset_link_vendor_default_pwd", "true");
+        } else {
+          sessionStorage.removeItem("asset_link_vendor_default_pwd");
+        }
+
         router.push("/keyin");
       } else {
-        // 🚀 物理修復 (TS2345)：加入預設安全字串 "登入驗證失敗"，避免傳入 undefined
         setErrorMsg(res.message || "登入驗證失敗，請檢查輸入的授權密碼。");
         setIsLoading(false);
       }
@@ -124,31 +131,23 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[#f7f9fb] flex items-center justify-center p-6 font-[family-name:-apple-system,BlinkMacSystemFont,'SF_Pro_TC','PingFang_TC',system-ui,sans-serif] text-[#191c1e] antialiased">
-      
-      {/* 物理拔除了 Tailwind CDN，僅保留 Google Material Symbols 字體，確保效能與無報警 */}
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;700&display=swap" rel="stylesheet" />
 
-      {/* 物理背景裝飾 */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-primary-fixed-dim/20 rounded-full blur-[120px] mix-blend-multiply"></div>
         <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-secondary-fixed/30 rounded-full blur-[100px] mix-blend-multiply"></div>
       </div>
 
       <div className="relative z-10 w-full max-w-[420px]">
-        {/* 標題區 */}
         <div className="text-center mb-10">
           <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-primary/20 rotate-3 transition-transform hover:rotate-0 duration-500">
             <span className="material-symbols-outlined text-white text-4xl">token</span>
           </div>
-          {/* 改為最標準且順耳的「系統」 */}
           <h1 className="text-2xl font-black tracking-tight mb-2">ALink 設備裝機與網路申請系統<span className="text-primary"></span></h1>
           <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">ASSET-LINK PORTAL</p>
         </div>
 
-        {/* 登入表單區塊 */}
         <div className="bg-white/70 backdrop-blur-3xl rounded-[2.5rem] p-8 shadow-2xl border border-white/50">
-          
-          {/* 頻道選擇按鈕 */}
           {!loginType && (
             <div className="space-y-4">
               <button 
@@ -179,7 +178,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* 錯誤提示 */}
           {errorMsg && (
             <div className="mb-6 p-4 bg-red-50 text-error rounded-2xl border border-red-100 flex items-start gap-3 animate-bounce">
               <span className="material-symbols-outlined text-lg text-red-500">error</span>
@@ -187,7 +185,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* 管理者登入表單 */}
           {loginType === "admin" && (
             <div className="space-y-5">
               <div className="flex items-center gap-3 mb-6">
@@ -237,7 +234,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* 廠商登入表單 */}
           {loginType === "vendor" && (
             <div className="space-y-5">
               <div className="flex items-center gap-3 mb-6">
@@ -292,7 +288,6 @@ export default function LoginPage() {
               </button>
             </div>
           )}
-
         </div>
         <p className="text-center text-[10px] font-bold text-slate-400 mt-8">© 2026 ERI Information Tech.</p>
       </div>

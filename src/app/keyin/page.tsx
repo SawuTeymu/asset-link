@@ -4,17 +4,18 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { getVendorProgress, vendorConfirmAsset, submitAssetBatch } from "@/lib/actions/assets";
+import { updateVendorPassword } from "@/lib/actions/users";
 import styles from "./keyin.module.css";
 
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.4 手機真卡片跳行版 (True Card Layout)
+ * 狀態：V400.6 帳號安全管理與強制鎖定版
  * 職責：
  * 1. 預約錄入：支援 MAC 格式化與防呆。
  * 2. 狀態矩陣：動態支援 [待核定, 已退回(待修正), 已核定(待確認), 已結案]。
- * 3. 自動 SN：留空時自動產生 AUTO-YYYYMMDD-HEX 格式序號。
- * 4. 🚀 物理響應式架構：電腦版維持資料表(Table)，手機版改為獨立卡片區塊跳行顯示，樣式完美對齊輸入框。
+ * 3. 物理響應式：手機版真卡片跳行佈局。
+ * 4. 帳號安全：新增帳號管理 Tab。偵測預設密碼登入時，物理鎖定其他作業選單，強制更新密碼。
  * ==========================================
  */
 
@@ -30,7 +31,13 @@ interface DeviceState {
 
 export default function KeyinPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"entry" | "progress">("entry");
+  
+  // 🚀 狀態擴增：加入 account 分頁與安全鎖定狀態
+  const [activeTab, setActiveTab] = useState<"entry" | "progress" | "account">("entry");
+  const [isDefaultPassword, setIsDefaultPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [vendorName, setVendorName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -71,10 +78,19 @@ export default function KeyinPage() {
 
   useEffect(() => {
     const v = sessionStorage.getItem("asset_link_vendor");
+    const isDef = sessionStorage.getItem("asset_link_vendor_default_pwd") === "true"; // 判斷是否為預設密碼登入
+    
     if (!v) { router.push("/"); return; }
     setVendorName(v);
+    
+    // 🚀 如果是預設密碼，強制觸發鎖定並跳轉至帳號管理
+    if (isDef) {
+      setIsDefaultPassword(true);
+      setActiveTab("account");
+    }
+
     fetchBuildings();
-    if (activeTab === "progress") fetchPendingRecords(v);
+    if (activeTab === "progress" && !isDef) fetchPendingRecords(v);
   }, [router, activeTab, fetchBuildings, fetchPendingRecords]);
 
   const handleMacInput = (index: number, val: string, macField: "mac" | "mac2") => {
@@ -200,6 +216,47 @@ export default function KeyinPage() {
     }
   };
 
+  // 🚀 執行密碼更新驗證與提交
+  const handleUpdatePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      showToast("密碼長度安全限制：至少需 6 碼", "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast("兩次密碼輸入不一致，請重新確認", "error");
+      return;
+    }
+    if (newPassword === "123456") {
+      showToast("新密碼不可與預設密碼相同", "error");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await updateVendorPassword(vendorName, newPassword);
+      if (res.success) {
+        sessionStorage.removeItem("asset_link_vendor_default_pwd");
+        setIsDefaultPassword(false);
+        showToast("密碼更新成功！系統安全鎖定已解除。", "success");
+        setNewPassword("");
+        setConfirmPassword("");
+        setActiveTab("entry"); // 解鎖後自動導向作業錄入區
+      } else {
+        showToast(res.message || "密碼更新失敗，請聯繫資訊中心", "error");
+      }
+    } catch (err: any) {
+      showToast(`發生異常: ${err.message}`, "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("asset_link_vendor");
+    sessionStorage.removeItem("asset_link_vendor_default_pwd");
+    router.push("/");
+  };
+
   return (
     <div className={`min-h-screen text-slate-800 font-body-md overflow-x-hidden relative ${styles.medicalGradient} antialiased`}>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
@@ -211,7 +268,7 @@ export default function KeyinPage() {
           <span className="text-lg md:text-xl font-black text-sky-800 tracking-tight truncate max-w-[250px]">Vendor Portal</span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push("/")} className="flex items-center gap-1 font-bold text-slate-500 hover:text-red-500 transition-colors">
+          <button onClick={handleLogout} className="flex items-center gap-1 font-bold text-slate-500 hover:text-red-500 transition-colors">
             <span className="material-symbols-outlined text-base">logout</span><span className="hidden md:inline text-xs">登出</span>
           </button>
         </div>
@@ -221,16 +278,100 @@ export default function KeyinPage() {
         <aside className={`w-64 fixed left-0 top-0 h-screen pt-16 border-r border-white/30 bg-white/80 backdrop-blur-2xl p-6 z-50 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
           <div className="flex justify-between items-center mb-8 px-2 font-black text-sky-800 uppercase tracking-widest"><p className="text-sm">ALink 作業區</p></div>
           <nav className="space-y-2">
-             <button onClick={() => { setActiveTab("entry"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all flex items-center gap-3 ${activeTab === 'entry' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}><span className={`material-symbols-outlined text-sm ${styles.iconFill}`}>edit_square</span>預約錄入</button>
-             <button onClick={() => { setActiveTab("progress"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all flex items-center gap-3 ${activeTab === 'progress' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}><span className={`material-symbols-outlined text-sm ${styles.iconFill}`}>hourglass_top</span>進度查詢</button>
+             <button 
+               onClick={() => { if(!isDefaultPassword) { setActiveTab("entry"); setIsMobileMenuOpen(false); } }} 
+               className={`w-full text-left p-4 rounded-2xl font-bold transition-all flex items-center gap-3 ${activeTab === 'entry' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'} ${isDefaultPassword ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+             >
+               <span className={`material-symbols-outlined text-sm ${styles.iconFill}`}>edit_square</span>預約錄入
+             </button>
+             
+             <button 
+               onClick={() => { if(!isDefaultPassword) { setActiveTab("progress"); setIsMobileMenuOpen(false); } }} 
+               className={`w-full text-left p-4 rounded-2xl font-bold transition-all flex items-center gap-3 ${activeTab === 'progress' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'} ${isDefaultPassword ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+             >
+               <span className={`material-symbols-outlined text-sm ${styles.iconFill}`}>hourglass_top</span>進度查詢
+             </button>
+
+             <div className="my-4 border-t border-slate-200/50"></div>
+
+             {/* 🚀 新增帳號管理通道 */}
+             <button 
+               onClick={() => { setActiveTab("account"); setIsMobileMenuOpen(false); }} 
+               className={`w-full text-left p-4 rounded-2xl font-bold transition-all flex items-center gap-3 ${activeTab === 'account' ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+             >
+               <span className={`material-symbols-outlined text-sm ${styles.iconFill}`}>manage_accounts</span>帳號安全
+               {isDefaultPassword && <span className="ml-auto w-2 h-2 rounded-full bg-red-500 animate-ping"></span>}
+             </button>
           </nav>
         </aside>
 
         <main className="w-full md:ml-64 p-4 md:p-8">
           <header className="mb-10">
-            <h1 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">{activeTab === 'entry' ? `廠商錄入 : ${vendorName}` : '審核進度追蹤'}</h1>
+            <h1 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">
+              {activeTab === 'entry' && `廠商錄入 : ${vendorName}`}
+              {activeTab === 'progress' && '審核進度追蹤'}
+              {activeTab === 'account' && '帳號安全中心'}
+            </h1>
             <p className="text-xs md:text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">Administrative Asset Interface</p>
           </header>
+
+          {/* 🚀 新增：帳號管理與強制更新密碼區塊 */}
+          {activeTab === 'account' && (
+            <div className={`${styles.clinicalGlass} rounded-3xl p-6 md:p-8 shadow-sm flex flex-col animate-in slide-in-from-bottom-4 max-w-2xl mx-auto`}>
+               <div className="flex items-center gap-2 mb-8 border-b border-slate-100 pb-4">
+                 <span className={`material-symbols-outlined text-blue-600 ${styles.iconFill}`}>manage_accounts</span>
+                 <h2 className="text-lg font-bold text-slate-800 tracking-tight">廠商身分認證與密碼管理</h2>
+               </div>
+
+               {isDefaultPassword && (
+                 <div className="mb-6 p-4 bg-amber-50 text-amber-700 rounded-2xl border border-amber-200 flex items-start gap-3">
+                   <span className={`material-symbols-outlined text-lg ${styles.iconFill} animate-pulse`}>warning</span>
+                   <div>
+                     <h3 className="text-[12px] font-black tracking-widest uppercase mb-1">系統作業權限鎖定中</h3>
+                     <p className="text-[11px] font-bold">偵測到您正在使用系統預設密碼 (123456) 登入。為保障雙方資產與網路資料安全，請立即設定您的專屬新密碼以解鎖各項作業功能。</p>
+                   </div>
+                 </div>
+               )}
+
+               <div className="space-y-5">
+                 <div>
+                   <label className={styles.inputLabel}>帳號所屬實體 (Vendor Entity)</label>
+                   <input type="text" value={vendorName} disabled className={`${styles.crystalInput} opacity-70 bg-slate-100 cursor-not-allowed text-slate-500 font-black`} />
+                 </div>
+                 <div>
+                   <label className={styles.inputLabel}>設定新密碼 (New Password)</label>
+                   <input
+                     type="password"
+                     value={newPassword}
+                     onChange={e => setNewPassword(e.target.value)}
+                     placeholder="請輸入最少 6 碼長度之新密碼"
+                     className={`${styles.crystalInput} tracking-widest`}
+                   />
+                 </div>
+                 <div>
+                   <label className={styles.inputLabel}>確認新密碼 (Confirm Password)</label>
+                   <input
+                     type="password"
+                     value={confirmPassword}
+                     onChange={e => setConfirmPassword(e.target.value)}
+                     placeholder="請再次輸入新密碼以進行核對"
+                     className={`${styles.crystalInput} tracking-widest`}
+                     onKeyDown={e => { if (e.key === 'Enter') handleUpdatePassword(); }}
+                   />
+                 </div>
+               </div>
+
+               <div className="mt-8 pt-6 border-t border-slate-100">
+                 <button
+                   onClick={handleUpdatePassword}
+                   disabled={isLoading || !newPassword || !confirmPassword}
+                   className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-[0.3em] text-sm shadow-xl shadow-blue-900/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                 >
+                   {isLoading ? <> <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> <span>系統變更中...</span> </> : <><span className={`material-symbols-outlined text-[18px] ${styles.iconFill}`}>lock_reset</span> <span>儲存變更並解鎖系統</span></>}
+                 </button>
+               </div>
+            </div>
+          )}
 
           {activeTab === 'entry' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in zoom-in-95 duration-500">
