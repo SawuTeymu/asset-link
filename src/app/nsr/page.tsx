@@ -9,10 +9,10 @@ import styles from "./nsr.module.css";
 /**
  * ==========================================
  * 檔案：src/app/nsr/page.tsx
- * 狀態：V400.3 NSR 申請與結算雙軌完整版
+ * 狀態：V400.4 NSR 申請與結算雙軌完整版 (網點專屬過濾)
  * 職責：
- * 1. 【修復恢復】網點申請錄入：恢復 NSR 的申請輸入表單，可新增網點工程。
- * 2. 計價結算管理：從 historical_assets 讀取已結案資產，進行 NSR 計價結算。
+ * 1. 網點申請錄入：NSR 申請輸入表單，可新增網點工程。
+ * 2. 🚀 計價結算限制：從 historical_assets 讀取時，強制加入 .eq("設備類型", "網點工程")，排除一般 PC 設備。
  * 3. 雙分頁架構：左側選單可切換「申請錄入」與「計價結算」。
  * 4. 物理響應式：維持手機版卡片直向堆疊跳行顯示。
  * ==========================================
@@ -28,7 +28,6 @@ interface NsrRequest {
 export default function NsrPage() {
   const router = useRouter();
   
-  // 🚀 新增：雙分頁狀態 (entry: 申請, settlement: 結算)
   const [activeTab, setActiveTab] = useState<"entry" | "settlement">("entry");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,11 +59,16 @@ export default function NsrPage() {
     } catch (err) { console.error("棟別同步異常"); }
   }, [metadata.area]);
 
-  // --- 獲取結案清單 (供結算使用) ---
+  // --- 🚀 獲取結案清單 (已加入網點專屬過濾) ---
   const fetchNsrRecords = useCallback(async () => {
     setIsLoading(true);
     try {
-      let query = supabase.from("historical_assets").select("*").order("裝機日期", { ascending: false });
+      // 🚀 核心邏輯：強制只抓取 "設備類型" 為 "網點工程" 的資料，隔絕一般電腦與印表機結案單
+      let query = supabase
+        .from("historical_assets")
+        .select("*")
+        .eq("設備類型", "網點工程")
+        .order("裝機日期", { ascending: false });
 
       if (vendorFilter !== "ALL") query = query.eq("同步來源", vendorFilter);
       if (statusFilter !== "ALL") {
@@ -90,7 +94,7 @@ export default function NsrPage() {
     if (activeTab === "settlement") fetchNsrRecords();
   }, [router, activeTab, fetchBuildings, fetchNsrRecords]);
 
-  // --- 🚀 恢復的 NSR 申請送出邏輯 ---
+  // --- NSR 申請送出邏輯 ---
   const handleSubmitNsr = async () => {
     if (isLoading) return;
     if (!metadata.area || !metadata.unit || !metadata.applicantName) { 
@@ -103,7 +107,6 @@ export default function NsrPage() {
       const formId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `NSR-${Date.now()}`;
       
       const payload = requests.map(r => {
-        // 自動生成 NSR 序號
         let finalSn = r.sn.trim().toUpperCase();
         if (!finalSn) {
           const randomHex = Math.floor(Math.random() * 16777215).toString(16).toUpperCase().padStart(6, '0');
@@ -118,7 +121,7 @@ export default function NsrPage() {
           "使用單位": metadata.unit,
           "姓名": metadata.applicantName.trim(),
           "分機": metadata.applicantExt.trim(),
-          "設備類型": "網點工程",
+          "設備類型": "網點工程", // 🚀 寫入時強制標記為網點工程
           "品牌型號": r.type,
           "產品序號": finalSn,
           "主要mac": "",
@@ -202,7 +205,6 @@ export default function NsrPage() {
               <button onClick={() => router.push("/admin")} className="w-full text-left p-4 rounded-2xl font-bold text-slate-600 hover:bg-white/60 flex items-center gap-3 transition-all"><span className="material-symbols-outlined text-base">dashboard</span> 儀表板首頁</button>
               <button onClick={() => router.push("/pending")} className="w-full text-left p-4 rounded-2xl font-bold text-slate-600 hover:bg-white/60 flex items-center gap-3 transition-all"><span className="material-symbols-outlined text-base">assignment_turned_in</span> 行政審核</button>
               
-              {/* 🚀 NSR 雙分頁導覽 */}
               <div className="my-4 border-t border-slate-200/50"></div>
               <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NSR 作業模組</p>
               
@@ -292,7 +294,7 @@ export default function NsrPage() {
 
 
         {/* =========================================
-            🚀 分頁 2：網點計價結算 (保留稍早做好的 RWD)
+            🚀 分頁 2：網點計價結算
             ========================================= */}
         {activeTab === 'settlement' && (
           <div className="animate-in fade-in zoom-in-95 duration-300">
@@ -366,10 +368,9 @@ export default function NsrPage() {
                           <p className="text-[10px] text-slate-400 font-normal uppercase mt-0.5">{record.棟別} | {record.樓層} | {record.裝機日期}</p>
                           <p className="text-[10px] text-slate-500 font-normal mt-0.5">{record.姓名} #{record.分機}</p>
                         </td>
-                        <td className={`${styles.mobileTd} p-4 align-top`} data-label="設備參數 / IP狀態">
+                        <td className={`${styles.mobileTd} p-4 align-top`} data-label="工程明細 / 位置">
                           <p className="font-bold text-slate-600">{record.品牌型號} <span className="text-[10px] text-slate-400 font-normal">({record.設備類型})</span></p>
-                          <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">MAC: <span className="font-black text-blue-600">{record.主要mac}</span></p>
-                          {record.核定ip && <p className="text-[10px] font-bold text-emerald-600 mt-1.5 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-100">核定 IP: {record.核定ip}</p>}
+                          <p className="text-[10px] text-slate-500 mt-1 bg-slate-50 p-2 rounded border border-slate-100">{record.行政備註 || record.備註 || "無詳細備註"}</p>
                         </td>
                         <td className={`${styles.mobileTd} p-4 align-top`} data-label="廠商 / 計價狀態">
                           <p className="text-xs font-black text-sky-700 bg-sky-50 px-2 py-0.5 rounded inline-block mb-2 border border-sky-100">{record.同步來源}</p>
@@ -395,25 +396,8 @@ export default function NsrPage() {
         )}
       </main>
 
-      {/* --- 全局 Loading --- */}
-      {isLoading && (
-        <div className={styles.loaderOverlay}>
-          <div className={styles.spinner}></div>
-          <p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">系統處理中...</p>
-        </div>
-      )}
-
-      {/* --- Toast 訊息 --- */}
-      <div className="fixed bottom-10 right-8 z-[9000] flex flex-col gap-3">
-        {toasts.map(t => (
-          <div key={t.id} className={`${styles.toastBase} ${t.type === 'info' ? 'bg-blue-50 text-blue-800 border-blue-200' : ''}`}>
-            <span className={`material-symbols-outlined text-sm ${styles.iconFill} ${t.type === 'success' ? 'text-emerald-400' : t.type === 'error' ? 'text-red-400' : 'text-blue-400'}`}>
-              {t.type === 'success' ? 'check_circle' : t.type === 'error' ? 'report' : 'info'}
-            </span> 
-            <span className="tracking-wide">{t.msg}</span>
-          </div>
-        ))}
-      </div>
+      {isLoading && <div className={styles.loaderOverlay}><div className={styles.spinner}></div><p className="text-blue-600 font-black text-[10px] uppercase mt-6 tracking-[0.5em] animate-pulse">系統資料同步中...</p></div>}
+      <div className="fixed bottom-10 right-8 z-[9000] flex flex-col gap-3">{toasts.map(t => <div key={t.id} className={`${styles.toastBase} ${t.type === 'info' ? 'bg-blue-50 text-blue-800 border-blue-200' : ''}`}><span className={`material-symbols-outlined text-sm ${styles.iconFill} ${t.type === 'success' ? 'text-emerald-400' : t.type === 'error' ? 'text-red-400' : 'text-blue-400'}`}>{t.type === 'success' ? 'check_circle' : t.type === 'error' ? 'report' : 'info'}</span><span className="tracking-wide">{t.msg}</span></div>)}</div>
     </div>
   );
 }
