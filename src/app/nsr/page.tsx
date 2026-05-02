@@ -9,10 +9,10 @@ import styles from "./nsr.module.css";
 /**
  * ==========================================
  * 檔案：src/app/nsr/page.tsx
- * 狀態：V400.4 NSR 申請與結算雙軌完整版 (網點專屬過濾)
+ * 狀態：V400.5 NSR 申請與結算雙軌完整版 (NSR 血統強制過濾)
  * 職責：
- * 1. 網點申請錄入：NSR 申請輸入表單，可新增網點工程。
- * 2. 🚀 計價結算限制：從 historical_assets 讀取時，強制加入 .eq("設備類型", "網點工程")，排除一般 PC 設備。
+ * 1. 網點申請錄入：強制為所有單據加上 "NSR-" 序號前綴。
+ * 2. 🚀 精準結算限制：從 historical_assets 讀取時，強制使用 .like("產品序號", "NSR-%")，100% 隔絕非網點設備。
  * 3. 雙分頁架構：左側選單可切換「申請錄入」與「計價結算」。
  * 4. 物理響應式：維持手機版卡片直向堆疊跳行顯示。
  * ==========================================
@@ -40,8 +40,7 @@ export default function NsrPage() {
 
   // --- 結算專用狀態 ---
   const [records, setRecords] = useState<any[]>([]);
-  const [vendorFilter, setVendorFilter] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL"); // 已拔除廠商篩選器
 
   const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
     const id = Date.now();
@@ -59,18 +58,17 @@ export default function NsrPage() {
     } catch (err) { console.error("棟別同步異常"); }
   }, [metadata.area]);
 
-  // --- 🚀 獲取結案清單 (已加入網點專屬過濾) ---
+  // --- 🚀 獲取結案清單 (NSR 血統強制過濾) ---
   const fetchNsrRecords = useCallback(async () => {
     setIsLoading(true);
     try {
-      // 🚀 核心邏輯：強制只抓取 "設備類型" 為 "網點工程" 的資料，隔絕一般電腦與印表機結案單
+      // 🚀 核心邏輯：利用 NSR- 前綴，精準且嚴格地只抓取從「NSR網點申請」頁面送出的資料
       let query = supabase
         .from("historical_assets")
         .select("*")
-        .eq("設備類型", "網點工程")
+        .like("產品序號", "NSR-%") // 絕對隔絕非 NSR 單據
         .order("裝機日期", { ascending: false });
 
-      if (vendorFilter !== "ALL") query = query.eq("同步來源", vendorFilter);
       if (statusFilter !== "ALL") {
         query = query.eq("狀態", statusFilter);
       } else {
@@ -85,7 +83,7 @@ export default function NsrPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [vendorFilter, statusFilter, showToast]);
+  }, [statusFilter, showToast]);
 
   useEffect(() => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
@@ -94,7 +92,7 @@ export default function NsrPage() {
     if (activeTab === "settlement") fetchNsrRecords();
   }, [router, activeTab, fetchBuildings, fetchNsrRecords]);
 
-  // --- NSR 申請送出邏輯 ---
+  // --- 🚀 NSR 申請送出邏輯 (強制賦予 NSR 血統) ---
   const handleSubmitNsr = async () => {
     if (isLoading) return;
     if (!metadata.area || !metadata.unit || !metadata.applicantName) { 
@@ -108,9 +106,15 @@ export default function NsrPage() {
       
       const payload = requests.map(r => {
         let finalSn = r.sn.trim().toUpperCase();
+        
+        // 🚀 強制保證每一筆資料都有 NSR- 前綴
         if (!finalSn) {
           const randomHex = Math.floor(Math.random() * 16777215).toString(16).toUpperCase().padStart(6, '0');
           finalSn = `NSR-${metadata.date.replace(/-/g, '')}-${randomHex}`;
+        } else {
+          if (!finalSn.startsWith("NSR-")) {
+            finalSn = `NSR-${finalSn}`;
+          }
         }
 
         return {
@@ -121,7 +125,7 @@ export default function NsrPage() {
           "使用單位": metadata.unit,
           "姓名": metadata.applicantName.trim(),
           "分機": metadata.applicantExt.trim(),
-          "設備類型": "網點工程", // 🚀 寫入時強制標記為網點工程
+          "設備類型": "網點工程", 
           "品牌型號": r.type,
           "產品序號": finalSn,
           "主要mac": "",
@@ -136,7 +140,7 @@ export default function NsrPage() {
       if (error) throw new Error(error.message);
 
       setRequests([{ type: "新設網點", location: "", sn: "", remark: "" }]);
-      showToast("NSR 網點申請已成功錄入", "success");
+      showToast("NSR 網點申請已成功錄入，請至待核定區進行後續流程", "success");
     } catch (err: any) {
       console.error("NSR 申請失敗", err);
       showToast(`寫入失敗: ${err.message}`, "error");
@@ -151,7 +155,7 @@ export default function NsrPage() {
     setIsLoading(true);
     try {
       await markNsrBilled(sn);
-      showToast("標記成功，該設備已完成計價", "success");
+      showToast("標記成功，該工程已完成計價", "success");
       await fetchNsrRecords();
     } catch (err: any) {
       showToast(err.message || "更新失敗", "error");
@@ -172,7 +176,7 @@ export default function NsrPage() {
     try {
       const sns = unbilledRecords.map(r => r.產品序號);
       await batchMarkNsrBilled(sns);
-      showToast(`批次作業完成，共結算 ${sns.length} 筆設備`, "success");
+      showToast(`批次作業完成，共結算 ${sns.length} 筆工程`, "success");
       await fetchNsrRecords();
     } catch (err: any) {
       showToast(err.message || "批次更新失敗", "error");
@@ -294,7 +298,7 @@ export default function NsrPage() {
 
 
         {/* =========================================
-            🚀 分頁 2：網點計價結算
+            🚀 分頁 2：網點計價結算 (無廠商篩選器、100% NSR 血統隔離)
             ========================================= */}
         {activeTab === 'settlement' && (
           <div className="animate-in fade-in zoom-in-95 duration-300">
@@ -319,15 +323,10 @@ export default function NsrPage() {
             <div className={`${styles.clinicalGlass} rounded-2xl p-5 mb-8 flex flex-col sm:flex-row gap-4 items-center shadow-sm`}>
                <div className="w-full sm:w-auto flex-1 flex items-center gap-3">
                  <span className="material-symbols-outlined text-slate-400">filter_list</span>
-                 <span className="text-xs font-black tracking-widest text-slate-500 uppercase whitespace-nowrap">進階篩選</span>
+                 <span className="text-xs font-black tracking-widest text-slate-500 uppercase whitespace-nowrap">狀態篩選</span>
                </div>
+               {/* 🚀 已移除不必要的「廠商篩選器」，因為單據全部來自資訊中心發包的 NSR 單 */}
                <div className="w-full sm:w-auto flex gap-3 flex-col sm:flex-row">
-                 <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} className={styles.crystalInput}>
-                    <option value="ALL">全部合作廠商</option>
-                    {Array.from(new Set(records.map(r => r.同步來源).filter(Boolean))).map(v => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
-                 </select>
                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={styles.crystalInput}>
                     <option value="ALL">顯示全部狀態</option>
                     <option value="已結案">未結算 (已結案)</option>
@@ -340,7 +339,7 @@ export default function NsrPage() {
               <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-4">
                 <div className="flex items-center gap-2">
                   <span className={`material-symbols-outlined text-emerald-500 ${styles.iconFill}`}>account_balance_wallet</span>
-                  <h2 className="text-lg font-bold text-slate-800 tracking-tight">可計價結案紀錄</h2>
+                  <h2 className="text-lg font-bold text-slate-800 tracking-tight">專屬 NSR 可計價紀錄</h2>
                 </div>
                 <span className="text-xs font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-full">共 {records.length} 筆</span>
               </div>
@@ -352,7 +351,7 @@ export default function NsrPage() {
                       <th className="pb-4 px-4">產品序號 / 結案單號</th>
                       <th className="pb-4 px-4">部署單位 / 裝機日</th>
                       <th className="pb-4 px-4">設備參數 / 核發 IP</th>
-                      <th className="pb-4 px-4">廠商 / 計價狀態</th>
+                      <th className="pb-4 px-4">來源 / 計價狀態</th>
                       <th className="pb-4 px-4 text-right">計價操作</th>
                     </tr>
                   </thead>
@@ -372,8 +371,8 @@ export default function NsrPage() {
                           <p className="font-bold text-slate-600">{record.品牌型號} <span className="text-[10px] text-slate-400 font-normal">({record.設備類型})</span></p>
                           <p className="text-[10px] text-slate-500 mt-1 bg-slate-50 p-2 rounded border border-slate-100">{record.行政備註 || record.備註 || "無詳細備註"}</p>
                         </td>
-                        <td className={`${styles.mobileTd} p-4 align-top`} data-label="廠商 / 計價狀態">
-                          <p className="text-xs font-black text-sky-700 bg-sky-50 px-2 py-0.5 rounded inline-block mb-2 border border-sky-100">{record.同步來源}</p>
+                        <td className={`${styles.mobileTd} p-4 align-top`} data-label="來源 / 計價狀態">
+                          <p className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded inline-block mb-2 border border-emerald-100">NSR 系統單</p>
                           <div>
                             {record.狀態 === '已結案' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">未計價</span>}
                             {record.狀態 === '已計價結算' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm">已計價結算</span>}
