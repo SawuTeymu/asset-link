@@ -1,5 +1,5 @@
 /* src/app/nsr/nsr.module.css */
-/* NSR 專用物理樣式矩陣 - V400.1 手機版真獨立框卡片版 */
+/* NSR 專用物理樣式矩陣 - V400.3 申請與結算雙軌完美支援版 */
 
 .medicalGradient {
     background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
@@ -34,6 +34,74 @@
     background: #ffffff;
 }
 
+/* 🚀 申請錄入表單專用：獨立外框與格線 */
+.deviceItemBlock {
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    border-radius: 1.5rem;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.deviceItemBlock:hover {
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.05);
+}
+
+.rowGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+@media (max-width: 640px) {
+    .rowGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.inputLabel {
+    font-size: 10px;
+    font-weight: 900;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+    display: block;
+    margin-left: 4px;
+}
+
+.removeBtn {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #fee2e2;
+    color: #ef4444;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #ffffff;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.removeBtn:hover {
+    background: #ef4444;
+    color: #ffffff;
+    transform: scale(1.1);
+}
+
+/* 載入與提示動畫 */
 .loaderOverlay {
     position: fixed;
     inset: 0;
@@ -89,7 +157,6 @@
 /* =========================================================
    🚀 物理規則：手機版 Table 無捲軸 (直列卡片強制轉型)
    加入 !important 確保完全覆蓋 Tailwind 的預設表單樣式
-   這段結構與 Keyin 的手機卡片排版完全一致，維持跨頁面完美體驗
    ========================================================= */
 .tableContainer {
     width: 100%;
@@ -98,16 +165,15 @@
 
 @media (max-width: 1024px) {
     .tableContainer {
-        overflow-x: hidden !important; /* 絕對消滅橫向捲軸 */
+        overflow-x: hidden !important; 
     }
     
     .responsiveTable {
         display: block !important;
         width: 100% !important;
-        min-width: 0 !important; /* 物理消滅 Tailwind 殘留的強制寬度 */
+        min-width: 0 !important; 
     }
     
-    /* 隱藏原生表頭 */
     .desktopOnly {
         display: none !important;
     }
@@ -117,7 +183,6 @@
         width: 100% !important;
     }
     
-    /* 將每一個 tr 轉換為獨立圓角卡片 */
     .mobileCard {
         display: flex !important;
         flex-direction: column !important;
@@ -129,7 +194,6 @@
         border: 1px solid rgba(226, 232, 240, 0.8) !important;
     }
     
-    /* 每個欄位獨立為一行 */
     .mobileTd {
         display: flex !important;
         flex-direction: column !important;
@@ -140,14 +204,12 @@
         text-align: left !important;
     }
     
-    /* 最後一欄 (操作區) 取消底線 */
     .mobileTd:last-child {
         border-bottom: none !important;
         padding-bottom: 0 !important;
         padding-top: 1rem !important;
     }
     
-    /* 透過 ::before 偽元素將 data-label 的文字動態插入作為標題 */
     .mobileTd::before {
         content: attr(data-label);
         font-size: 11px !important;
@@ -162,7 +224,6 @@
         padding-bottom: 4px !important;
     }
     
-    /* 按鈕在手機版撐滿寬度 */
     .mobileActionStack {
         width: 100% !important;
         flex-direction: column !important;
