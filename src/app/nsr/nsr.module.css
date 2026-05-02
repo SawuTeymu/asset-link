@@ -1,25 +1,179 @@
-/*  Pending 專用物理樣式矩陣 - V300.9 */
+/* src/app/nsr/nsr.module.css */
+/* NSR 專用物理樣式矩陣 - V400.1 手機版真獨立框卡片版 */
 
-.bgGradientCustom {
-    background: radial-gradient(at 0% 0%, #e0f2fe 0%, transparent 50%), 
-                radial-gradient(at 100% 100%, #cce5ff 0%, transparent 50%), 
-                #faf8ff;
+.medicalGradient {
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
     background-attachment: fixed;
+    min-height: 100vh;
 }
 
 .clinicalGlass {
     background: rgba(255, 255, 255, 0.7);
-    /*  修復：-webkit- 前綴必須排在標準屬性之前以符合編譯器規範 */
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
-.innerGlow {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+.crystalInput {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1e293b;
+    outline: none;
+    transition: all 0.2s ease-in-out;
+}
+
+.crystalInput:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    background: #ffffff;
+}
+
+.loaderOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+.spinner {
+    width: 3rem;
+    height: 3rem;
+    border: 4px solid rgba(59, 130, 246, 0.2);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.toastBase {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    background: #ffffff;
+    border-radius: 1rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-left: 4px solid #3b82f6;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #1e293b;
+    animation: slideInBottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    will-change: transform, opacity;
+}
+
+@keyframes slideInBottom {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 .iconFill {
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* =========================================================
+   🚀 物理規則：手機版 Table 無捲軸 (直列卡片強制轉型)
+   加入 !important 確保完全覆蓋 Tailwind 的預設表單樣式
+   這段結構與 Keyin 的手機卡片排版完全一致，維持跨頁面完美體驗
+   ========================================================= */
+.tableContainer {
+    width: 100%;
+    overflow-x: auto;
+}
+
+@media (max-width: 1024px) {
+    .tableContainer {
+        overflow-x: hidden !important; /* 絕對消滅橫向捲軸 */
+    }
+    
+    .responsiveTable {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important; /* 物理消滅 Tailwind 殘留的強制寬度 */
+    }
+    
+    /* 隱藏原生表頭 */
+    .desktopOnly {
+        display: none !important;
+    }
+    
+    .responsiveTable tbody {
+        display: block !important;
+        width: 100% !important;
+    }
+    
+    /* 將每一個 tr 轉換為獨立圓角卡片 */
+    .mobileCard {
+        display: flex !important;
+        flex-direction: column !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+        border-radius: 1.5rem !important;
+        margin-bottom: 1.25rem !important;
+        padding: 1.25rem !important;
+        box-shadow: 0 4px 15px rgba(0, 97, 148, 0.05) !important;
+        border: 1px solid rgba(226, 232, 240, 0.8) !important;
+    }
+    
+    /* 每個欄位獨立為一行 */
+    .mobileTd {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        padding: 0.75rem 0 !important;
+        border-bottom: 1px dashed #cbd5e1 !important;
+        width: 100% !important;
+        text-align: left !important;
+    }
+    
+    /* 最後一欄 (操作區) 取消底線 */
+    .mobileTd:last-child {
+        border-bottom: none !important;
+        padding-bottom: 0 !important;
+        padding-top: 1rem !important;
+    }
+    
+    /* 透過 ::before 偽元素將 data-label 的文字動態插入作為標題 */
+    .mobileTd::before {
+        content: attr(data-label);
+        font-size: 11px !important;
+        font-weight: 900 !important;
+        color: #94a3b8 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.1em !important;
+        margin-bottom: 0.5rem !important;
+        display: block !important;
+        width: 100% !important;
+        border-bottom: 2px solid #f1f5f9 !important;
+        padding-bottom: 4px !important;
+    }
+    
+    /* 按鈕在手機版撐滿寬度 */
+    .mobileActionStack {
+        width: 100% !important;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+        align-items: stretch !important;
+    }
+    
+    .mobileActionStack button {
+        width: 100% !important;
+        justify-content: center !important;
+        padding-top: 0.75rem !important;
+        padding-bottom: 0.75rem !important;
+    }
 }
