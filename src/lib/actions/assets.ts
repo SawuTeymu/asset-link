@@ -6,11 +6,11 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V400.10 終極完美防護版 + 全域操作日誌 (Logs)
+ * 狀態：V400.11 終極完美防護版 + 直通單號擴充
  * 職責：
- * 1. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼 (123456)。
- * 2. 報錯優化：捕捉 23505 (Unique Violation) 錯誤，轉換為友善提示。
- * 3. 🚀 全域日誌：實作 systemLog，強制記錄廠商與管理員的所有增刪改查動作。
+ * 1. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼。
+ * 2. 報錯優化：捕捉 23505 (Unique Violation) 錯誤。
+ * 3. 🚀 直通入庫擴充：submitInternalIssue 現可接收並寫入 C01 表單號 (結案單號)。
  * ==========================================
  */
 
@@ -60,9 +60,10 @@ export async function checkIpConflict(ip: string) {
   return !!active;
 }
 
-// --- 3. 內部直通入庫 (含 Log) ---
+// --- 3. 內部直通入庫 (含 Log 與 C01 表單號) ---
 export async function submitInternalIssue(payload: any) {
   const { error } = await supabase.from("historical_assets").insert([{
+    "結案單號": payload.formId, // 🚀 新增寫入 C01 表單號
     "核定ip": payload.ip,
     "主要mac": payload.mac1 || "",
     "產品序號": payload.sn,
@@ -84,7 +85,7 @@ export async function submitInternalIssue(payload: any) {
     throw new Error("入庫寫入失敗: " + error.message);
   }
   
-  await systemLog("管理員(Admin)", `執行內部直通結案 (SN: ${payload.sn})`);
+  await systemLog("管理員(Admin)", `執行內部直通結案 (C01單號: ${payload.formId}, SN: ${payload.sn})`);
   return true;
 }
 
@@ -238,31 +239,12 @@ export async function submitAssetBatch(batchData: any[]) {
   return { success: true };
 }
 
-// --- 🚀 11. 廠商撤回申請 (新增 Server Action, 含 Log) ---
+// --- 11. 廠商撤回申請 (含 Log) ---
 export async function withdrawVendorAsset(sn: string, vendorName: string) {
   await verifyVendorAuth(vendorName);
   const { error } = await supabase.from("資產").delete().eq("產品序號", sn).eq("來源廠商", vendorName);
   if (error) throw new Error("撤回失敗: " + error.message);
   
   await systemLog(vendorName, `廠商主動撤回審核中案件 (SN: ${sn})`);
-  return { success: true };
-}
-
-// --- 🚀 12. NSR 標記單筆計價結算 (新增 Server Action, 含 Log) ---
-export async function markNsrBilled(sn: string) {
-  const { error } = await supabase.from("historical_assets").update({ "狀態": "已計價結算" }).eq("產品序號", sn);
-  if (error) throw new Error("計價更新失敗: " + error.message);
-  
-  await systemLog("管理員(Admin)", `標記網點完成計價結算 (SN: ${sn})`);
-  return { success: true };
-}
-
-// --- 🚀 13. NSR 批次標記計價結算 (新增 Server Action, 含 Log) ---
-export async function batchMarkNsrBilled(sns: string[]) {
-  if (!sns || sns.length === 0) return { success: true };
-  const { error } = await supabase.from("historical_assets").update({ "狀態": "已計價結算" }).in("產品序號", sns);
-  if (error) throw new Error("批次計價更新失敗: " + error.message);
-  
-  await systemLog("管理員(Admin)", `批次標記網點完成計價結算 (共 ${sns.length} 筆)`);
   return { success: true };
 }
