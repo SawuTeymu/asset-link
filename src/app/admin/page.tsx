@@ -4,24 +4,25 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { 
   getDashboardStats, getHistoricalArchive, 
-  getVendorsAdmin, addVendorAdmin, toggleVendorStatusAdmin, resetVendorPasswordAdmin 
+  getVendorsAdmin, addVendorAdmin, toggleVendorStatusAdmin, resetVendorPasswordAdmin,
+  uploadVansIps, executeVansCleansing // 🚀 引入 VANS 清洗引擎
 } from "@/lib/actions/admin";
 import styles from "./admin.module.css";
 
 /**
  * ==========================================
  * 檔案：src/app/admin/page.tsx
- * 狀態：V2.0 總控台戰情室 (歷史庫與帳號管理擴充)
+ * 狀態：V3.0 總控台戰情室 (含 VANS 大數據清洗模組)
  * 職責：
- * 1. 儀表板：即時統計全域資產與待辦數量。
- * 2. 歷史庫：瀏覽所有歷史歸檔紀錄 (支援手機卡片排版)。
- * 3. 帳號管理：管理廠商帳號 (含新增、停用、重置密碼)。
+ * 1. 儀表板、歷史庫與帳號管理。
+ * 2. 🚀 新增 VANS 清洗模組：前端自動解析 VANS 檔案 IP，對接底層清洗引擎。
  * ==========================================
  */
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "history" | "accounts">("dashboard");
+  // 🚀 擴增 activeTab 狀態，加入 vans 分頁
+  const [activeTab, setActiveTab] = useState<"dashboard" | "history" | "accounts" | "vans">("dashboard");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" | "info" }[]>([]);
@@ -32,6 +33,9 @@ export default function AdminDashboardPage() {
   const [searchHistory, setSearchHistory] = useState("");
   const [vendors, setVendors] = useState<any[]>([]);
   const [newVendorName, setNewVendorName] = useState("");
+  
+  // 🚀 VANS 清洗專用狀態
+  const [vansIps, setVansIps] = useState<string[]>([]);
 
   const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
     const id = Date.now();
@@ -39,7 +43,6 @@ export default function AdminDashboardPage() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 資料撈取邏輯 ---
   const fetchDashboard = useCallback(async () => {
     setIsLoading(true);
     const res = await getDashboardStats();
@@ -50,13 +53,10 @@ export default function AdminDashboardPage() {
   const fetchHistory = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getHistoricalArchive(500); // 預設載入前 500 筆
+      const data = await getHistoricalArchive(500); 
       setHistoryRecords(data);
-    } catch (err: any) {
-      showToast(err.message, "error");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err: any) { showToast(err.message, "error"); } 
+    finally { setIsLoading(false); }
   }, [showToast]);
 
   const fetchAccounts = useCallback(async () => {
@@ -64,14 +64,10 @@ export default function AdminDashboardPage() {
     try {
       const data = await getVendorsAdmin();
       setVendors(data);
-    } catch (err: any) {
-      showToast(err.message, "error");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err: any) { showToast(err.message, "error"); } 
+    finally { setIsLoading(false); }
   }, [showToast]);
 
-  // --- 生命週期 ---
   useEffect(() => {
     const isAuth = sessionStorage.getItem("asset_link_admin_auth");
     if (isAuth !== "true") { router.push("/"); return; }
@@ -81,7 +77,6 @@ export default function AdminDashboardPage() {
     if (activeTab === "accounts") fetchAccounts();
   }, [router, activeTab, fetchDashboard, fetchHistory, fetchAccounts]);
 
-  // --- 帳號管理操作 ---
   const handleAddVendor = async () => {
     if (!newVendorName.trim()) { showToast("請輸入廠商名稱", "error"); return; }
     setIsLoading(true);
@@ -90,11 +85,8 @@ export default function AdminDashboardPage() {
       showToast("廠商帳號建立成功，預設密碼為 123456", "success");
       setNewVendorName("");
       await fetchAccounts();
-    } catch (err: any) {
-      showToast(err.message, "error");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err: any) { showToast(err.message, "error"); } 
+    finally { setIsLoading(false); }
   };
 
   const handleToggleVendor = async (name: string, status: string) => {
@@ -103,11 +95,8 @@ export default function AdminDashboardPage() {
       await toggleVendorStatusAdmin(name, status);
       showToast(`已成功變更 ${name} 的存取權限`, "success");
       await fetchAccounts();
-    } catch (err: any) {
-      showToast(err.message, "error");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err: any) { showToast(err.message, "error"); } 
+    finally { setIsLoading(false); }
   };
 
   const handleResetPassword = async (name: string) => {
@@ -116,11 +105,8 @@ export default function AdminDashboardPage() {
     try {
       await resetVendorPasswordAdmin(name);
       showToast(`已重置 ${name} 的登入密碼`, "success");
-    } catch (err: any) {
-      showToast(err.message, "error");
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (err: any) { showToast(err.message, "error"); } 
+    finally { setIsLoading(false); }
   };
 
   const handleLogout = () => {
@@ -128,11 +114,56 @@ export default function AdminDashboardPage() {
     router.push("/");
   };
 
-  // --- 歷史資料前端搜尋過濾 ---
+  // --- 🚀 VANS CSV 檔案解析邏輯 (純前端抓取 IP) ---
+  const handleVansFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      // 正規表達式：精準抓取符合 IPv4 格式的所有字串
+      const ipRegex = /\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g;
+      const foundIps = text.match(ipRegex) || [];
+      const uniqueIps = Array.from(new Set(foundIps)); // 去除重複的 IP
+      
+      setVansIps(uniqueIps);
+      showToast(`成功解析出 ${uniqueIps.length.toLocaleString()} 筆不重複的有效 IP`, "success");
+    };
+    reader.readAsText(file);
+  };
+
+  // --- 🚀 執行 VANS 大數據清洗 ---
+  const handleRunVansCleansing = async () => {
+    if(vansIps.length === 0) return showToast("請先上傳並解析 VANS 檔案", "error");
+    if(!confirm(`即將把 ${vansIps.length} 筆 IP 作為基準，對歷史庫執行智慧去重與狀態更新。此動作不可逆，確定執行嗎？`)) return;
+
+    setIsLoading(true);
+    try {
+      showToast("正在上傳 VANS 基準資料至伺服器...", "info");
+      await uploadVansIps(vansIps);
+      
+      showToast("上傳完成，開始執行資料庫 12 萬筆深度清洗...", "info");
+      await executeVansCleansing();
+      
+      showToast("✅ 大數據清洗作業圓滿完成！", "success");
+      setVansIps([]);
+      
+      // 切換回歷史庫查看結果
+      setActiveTab("history");
+      fetchHistory();
+    } catch(e: any) {
+      showToast(e.message, "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filteredHistory = historyRecords.filter(r => 
     r.sn.includes(searchHistory.toUpperCase()) || 
     r.unit.includes(searchHistory) ||
-    r.ip.includes(searchHistory)
+    r.ip.includes(searchHistory) ||
+    r.status.includes(searchHistory)
   );
 
   return (
@@ -162,6 +193,11 @@ export default function AdminDashboardPage() {
               <button onClick={() => { setActiveTab("accounts"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all flex items-center gap-3 ${activeTab === 'accounts' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-600 hover:bg-white/60'}`}>
                 <span className={`material-symbols-outlined text-sm ${activeTab === 'accounts' ? styles.iconFill : ''}`}>manage_accounts</span> 帳號權限管理
               </button>
+
+              {/* 🚀 VANS 清洗通道 */}
+              <button onClick={() => { setActiveTab("vans"); setIsMobileMenuOpen(false); }} className={`w-full text-left p-4 rounded-2xl font-bold transition-all flex items-center gap-3 mt-2 ${activeTab === 'vans' ? 'bg-blue-600 text-white shadow-md' : 'text-blue-700 bg-blue-50 border border-blue-100 hover:bg-blue-100'}`}>
+                <span className={`material-symbols-outlined text-sm ${activeTab === 'vans' ? styles.iconFill : ''}`}>cleaning_services</span> VANS 智慧比對清洗
+              </button>
               
               <div className="my-6 border-t border-slate-200/50"></div>
               <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">作業模組通道</p>
@@ -184,14 +220,13 @@ export default function AdminDashboardPage() {
               {activeTab === 'dashboard' && '系統維運儀表板'}
               {activeTab === 'history' && '全域歷史結案資料庫'}
               {activeTab === 'accounts' && '帳號與權限控制'}
+              {activeTab === 'vans' && '大數據比對清洗引擎'}
             </h1>
           </div>
           <p className="text-xs md:text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest pl-10 md:pl-0">System Control Center</p>
         </header>
 
-        {/* =========================================
-            分頁 1：Dashboard 儀表板
-            ========================================= */}
+        {/* 分頁 1：Dashboard */}
         {activeTab === 'dashboard' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -218,14 +253,12 @@ export default function AdminDashboardPage() {
                 <span className="material-symbols-outlined text-4xl text-slate-400">monitoring</span>
               </div>
               <h2 className="text-xl font-black text-slate-700 mb-2">系統運作一切正常</h2>
-              <p className="text-sm font-bold text-slate-500 max-w-md">請透過左側選單進入「行政審核」或「歷史資料庫」執行您的管理作業。各項模組的安全與日誌系統皆已啟用監控中。</p>
+              <p className="text-sm font-bold text-slate-500 max-w-md">請透過左側選單進入「行政審核」或「歷史資料庫」執行管理作業。各項模組的安全與日誌系統皆已啟用監控中。</p>
             </div>
           </div>
         )}
 
-        {/* =========================================
-            分頁 2：歷史結案資料庫
-            ========================================= */}
+        {/* 分頁 2：歷史結案資料庫 */}
         {activeTab === 'history' && (
           <div className="animate-in fade-in zoom-in-95 duration-300">
             <div className={`${styles.clinicalGlass} rounded-2xl p-5 mb-6 flex flex-col sm:flex-row gap-4 items-center shadow-sm`}>
@@ -233,7 +266,7 @@ export default function AdminDashboardPage() {
                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                  <input 
                    type="text" 
-                   placeholder="搜尋 產品序號 (S/N)、核定 IP 或 單位名稱..." 
+                   placeholder="搜尋 產品序號 (S/N)、核定 IP、單位名稱或狀態 (如: VANS未尋獲)..." 
                    value={searchHistory}
                    onChange={e => setSearchHistory(e.target.value)}
                    className={`${styles.crystalInput} pl-12`} 
@@ -257,8 +290,8 @@ export default function AdminDashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-                    {filteredHistory.map((record) => (
-                      <tr key={record.sn} className={`${styles.mobileCard} hover:bg-slate-50/50 transition-all`}>
+                    {filteredHistory.map((record, idx) => (
+                      <tr key={`${record.sn}-${idx}`} className={`${styles.mobileCard} hover:bg-slate-50/50 transition-all`}>
                         <td className={`${styles.mobileTd} p-4 align-top whitespace-nowrap`} data-label="產品序號 / IP">
                           <p className="font-mono text-sm font-black text-slate-600">{record.sn}</p>
                           {record.ip && <p className="text-[11px] font-mono text-emerald-600 mt-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 inline-block">{record.ip}</p>}
@@ -278,7 +311,14 @@ export default function AdminDashboardPage() {
                           </p>
                         </td>
                         <td className={`${styles.mobileTd} p-4 align-top lg:text-right whitespace-nowrap`} data-label="當前狀態">
-                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block py-2">{record.status}</span>
+                          {/* 狀態顏色動態判別 */}
+                          <span className={`text-[10px] font-black uppercase tracking-widest block py-2 ${
+                            record.status === 'VANS未尋獲' ? 'text-red-500' :
+                            record.status === '重複作廢' ? 'text-slate-400 line-through' :
+                            record.status.includes('VANS正常') ? 'text-emerald-600' : 'text-slate-500'
+                          }`}>
+                            {record.status}
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -290,24 +330,13 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* =========================================
-            分頁 3：帳號與權限管理
-            ========================================= */}
+        {/* 分頁 3：帳號與權限管理 */}
         {activeTab === 'accounts' && (
           <div className="animate-in fade-in zoom-in-95 duration-300">
-            
-            {/* 新增廠商工具列 */}
             <div className={`${styles.clinicalGlass} rounded-2xl p-6 mb-8 flex flex-col md:flex-row gap-4 items-end shadow-sm`}>
                <div className="w-full md:flex-1">
                  <label className={styles.inputLabel}>新增合作廠商實體</label>
-                 <input 
-                   type="text" 
-                   placeholder="請輸入新廠商名稱 (建立後預設密碼為 123456)" 
-                   value={newVendorName}
-                   onChange={e => setNewVendorName(e.target.value)}
-                   className={styles.crystalInput} 
-                   onKeyDown={e => { if (e.key === 'Enter') handleAddVendor(); }}
-                 />
+                 <input type="text" placeholder="請輸入新廠商名稱 (建立後預設密碼為 123456)" value={newVendorName} onChange={e => setNewVendorName(e.target.value)} className={styles.crystalInput} onKeyDown={e => { if (e.key === 'Enter') handleAddVendor(); }}/>
                </div>
                <button onClick={handleAddVendor} disabled={isLoading} className="w-full md:w-auto py-3 px-6 bg-slate-800 text-white rounded-xl font-black uppercase tracking-widest text-xs hover:bg-slate-700 transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-50">
                  <span className="material-symbols-outlined text-sm">person_add</span> 建立廠商帳號
@@ -315,40 +344,21 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-               {/* 廠商列表區塊 (佔 2 欄) */}
                <div className={`lg:col-span-2 ${styles.clinicalGlass} rounded-3xl p-6 shadow-sm`}>
                   <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
-                    <span className={`material-symbols-outlined text-blue-600 ${styles.iconFill}`}>storefront</span>
-                    <h2 className="text-lg font-bold text-slate-800 tracking-tight">合作廠商權限清單</h2>
+                    <span className={`material-symbols-outlined text-blue-600 ${styles.iconFill}`}>storefront</span><h2 className="text-lg font-bold text-slate-800 tracking-tight">合作廠商權限清單</h2>
                   </div>
-
                   <div className="flex flex-col gap-4">
                     {vendors.map((v) => (
                       <div key={v.name} className={`${styles.deviceItemBlock} !p-4 !flex-row !items-center !gap-4 justify-between bg-white/60`}>
                          <div>
-                           <h3 className="font-black text-slate-800 text-sm">{v.name}</h3>
-                           <p className="text-[10px] text-slate-400 font-mono mt-1">註冊: {new Date(v.createdAt).toLocaleDateString()}</p>
+                           <h3 className="font-black text-slate-800 text-sm">{v.name}</h3><p className="text-[10px] text-slate-400 font-mono mt-1">註冊: {new Date(v.createdAt).toLocaleDateString()}</p>
                          </div>
-                         
                          <div className="flex items-center gap-3">
-                           <span className={`text-[10px] font-black px-3 py-1 rounded-full border ${v.status === '正常' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                             {v.status}
-                           </span>
+                           <span className={`text-[10px] font-black px-3 py-1 rounded-full border ${v.status === '正常' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{v.status}</span>
                            <div className="flex gap-2">
-                             <button 
-                               onClick={() => handleToggleVendor(v.name, v.status)}
-                               title={v.status === '正常' ? '停權該廠商' : '恢復該廠商權限'}
-                               className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${v.status === '正常' ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'}`}
-                             >
-                               <span className="material-symbols-outlined text-sm">{v.status === '正常' ? 'block' : 'check_circle'}</span>
-                             </button>
-                             <button 
-                               onClick={() => handleResetPassword(v.name)}
-                               title="重置密碼為 123456"
-                               className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 hover:text-slate-800 flex items-center justify-center transition-all"
-                             >
-                               <span className="material-symbols-outlined text-sm">lock_reset</span>
-                             </button>
+                             <button onClick={() => handleToggleVendor(v.name, v.status)} title={v.status === '正常' ? '停權該廠商' : '恢復該廠商權限'} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${v.status === '正常' ? 'bg-amber-100 text-amber-600 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'}`}><span className="material-symbols-outlined text-sm">{v.status === '正常' ? 'block' : 'check_circle'}</span></button>
+                             <button onClick={() => handleResetPassword(v.name)} title="重置密碼為 123456" className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 hover:text-slate-800 flex items-center justify-center transition-all"><span className="material-symbols-outlined text-sm">lock_reset</span></button>
                            </div>
                          </div>
                       </div>
@@ -356,29 +366,77 @@ export default function AdminDashboardPage() {
                     {vendors.length === 0 && <p className="text-center text-slate-400 font-bold text-sm py-10">目前無廠商紀錄</p>}
                   </div>
                </div>
-
-               {/* 管理員列表區塊 (未來擴充預留) */}
                <div className={`lg:col-span-1 ${styles.clinicalGlass} rounded-3xl p-6 shadow-sm opacity-60 relative overflow-hidden group`}>
-                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-xs font-black bg-slate-800 text-white px-4 py-2 rounded-full uppercase tracking-widest shadow-lg">即將開放 (Coming Soon)</span>
-                  </div>
-                  <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
-                    <span className={`material-symbols-outlined text-slate-600 ${styles.iconFill}`}>admin_panel_settings</span>
-                    <h2 className="text-lg font-bold text-slate-800 tracking-tight">內部管理員清單</h2>
-                  </div>
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity"><span className="text-xs font-black bg-slate-800 text-white px-4 py-2 rounded-full uppercase tracking-widest shadow-lg">即將開放 (Coming Soon)</span></div>
+                  <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4"><span className={`material-symbols-outlined text-slate-600 ${styles.iconFill}`}>admin_panel_settings</span><h2 className="text-lg font-bold text-slate-800 tracking-tight">內部管理員清單</h2></div>
                   <div className="flex flex-col gap-4 filter grayscale pointer-events-none">
                      <div className={`${styles.deviceItemBlock} !p-4 !flex-row !items-center !gap-4 justify-between bg-slate-50 border-dashed`}>
-                        <div>
-                          <h3 className="font-black text-slate-600 text-sm">SysAdmin</h3>
-                          <p className="text-[10px] text-slate-400 font-mono mt-1">最高權限</p>
-                        </div>
-                        <span className="text-[10px] font-black px-3 py-1 rounded-full border bg-slate-200 text-slate-500 border-slate-300">啟用中</span>
+                        <div><h3 className="font-black text-slate-600 text-sm">SysAdmin</h3><p className="text-[10px] text-slate-400 font-mono mt-1">最高權限</p></div><span className="text-[10px] font-black px-3 py-1 rounded-full border bg-slate-200 text-slate-500 border-slate-300">啟用中</span>
                      </div>
                   </div>
                </div>
             </div>
           </div>
         )}
+
+        {/* =========================================
+            🚀 分頁 4：VANS 智慧大數據比對清洗 (New)
+            ========================================= */}
+        {activeTab === 'vans' && (
+          <div className="animate-in fade-in zoom-in-95 duration-300">
+            <div className={`${styles.clinicalGlass} rounded-3xl p-6 md:p-8 shadow-sm max-w-4xl mx-auto`}>
+               <div className="flex items-center gap-2 mb-8 border-b border-slate-100 pb-4">
+                 <span className={`material-symbols-outlined text-blue-600 ${styles.iconFill}`}>cleaning_services</span>
+                 <h2 className="text-lg font-bold text-slate-800 tracking-tight">VANS 基準比對與智慧清洗</h2>
+               </div>
+               
+               <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-8">
+                 <h3 className="font-black text-blue-800 mb-3 flex items-center gap-2">
+                   <span className="material-symbols-outlined text-xl">security</span> 清洗機制與安全宣告
+                 </h3>
+                 <ul className="text-sm text-blue-700 space-y-2 list-disc list-inside pl-2 font-bold leading-relaxed">
+                   <li>系統會自動搜尋「產品序號 (S/N)」重複的幽靈設備，僅保留裝機日最新的一筆，其餘標示為「重複作廢」。</li>
+                   <li>只要上傳最新版的 VANS 報表 (支援 .csv 或 .txt)，系統會以正規表達式自動擷取所有 IP 位址。</li>
+                   <li>當歷史庫中的設備 IP <span className="text-red-600">「不在」</span> VANS 名單內時，狀態將變更為「VANS未尋獲」。</li>
+                   <li>為保障歷史軌跡，系統<span className="underline decoration-wavy decoration-red-400">絕對不會刪除</span>任何一筆資料，所有動作均可由歷史庫重新查閱。</li>
+                 </ul>
+               </div>
+
+               <div className="space-y-8">
+                  <div>
+                    <label className={styles.inputLabel}>步驟一：選擇 VANS 匯出報表 (系統將自動抽取 IP)</label>
+                    <input 
+                      type="file" 
+                      accept=".csv,.txt" 
+                      onChange={handleVansFileUpload} 
+                      className={`${styles.crystalInput} py-4 cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100`} 
+                    />
+                  </div>
+                  
+                  {vansIps.length > 0 && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 animate-in slide-in-from-bottom-2">
+                      <div className="text-emerald-700 font-black flex items-center gap-2 text-lg mb-1">
+                        <span className="material-symbols-outlined">check_circle</span>
+                        檔案解析成功
+                      </div>
+                      <p className="text-emerald-600 text-sm font-bold pl-8">
+                        已從檔案中萃取出 <span className="text-emerald-800 text-lg mx-1">{vansIps.length.toLocaleString()}</span> 筆不重複的有效 IP 位址。
+                      </p>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={handleRunVansCleansing} 
+                    disabled={isLoading || vansIps.length === 0}
+                    className="w-full py-6 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-sm shadow-xl shadow-slate-900/20 hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                  >
+                    {isLoading ? <><span className="material-symbols-outlined animate-spin">refresh</span>資料庫巨量清洗中...</> : <><span className="material-symbols-outlined">database_check</span>開始執行 12 萬筆資料比對與智慧清洗</>}
+                  </button>
+               </div>
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* --- 全局 Loading 與 Toast --- */}
