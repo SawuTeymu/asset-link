@@ -6,11 +6,11 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V400.11 終極完美防護版 + 直通單號擴充
+ * 狀態：V400.11 內部直通批次升級版 + 全域操作日誌 (Logs)
  * 職責：
- * 1. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼。
- * 2. 報錯優化：捕捉 23505 (Unique Violation) 錯誤。
- * 3. 🚀 直通入庫擴充：submitInternalIssue 現可接收並寫入 C01 表單號 (結案單號)。
+ * 1. 🚀 內部直通升級：新增 submitInternalBatch 支援多設備陣列寫入與 C01 單號對接。
+ * 2. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼 (123456)。
+ * 3. 全域日誌：實作 systemLog，強制記錄廠商與管理員的所有增刪改查動作。
  * ==========================================
  */
 
@@ -60,33 +60,38 @@ export async function checkIpConflict(ip: string) {
   return !!active;
 }
 
-// --- 3. 內部直通入庫 (含 Log 與 C01 表單號) ---
-export async function submitInternalIssue(payload: any) {
-  const { error } = await supabase.from("historical_assets").insert([{
-    "結案單號": payload.formId, // 🚀 新增寫入 C01 表單號
-    "核定ip": payload.ip,
-    "主要mac": payload.mac1 || "",
-    "產品序號": payload.sn,
-    "設備名稱標記": payload.deviceName,
-    "設備類型": payload.deviceType,
-    "品牌型號": payload.model || "未提供",
-    "棟別": payload.area,
-    "樓層": payload.floor,
-    "使用單位": payload.unit,
-    "姓名": payload.applicantName,
-    "分機": payload.applicantExt,
+// --- 🚀 3. 內部直通批次入庫 (支援多設備與 C01 表單號) ---
+export async function submitInternalBatch(batchData: any[]) {
+  if (!batchData || batchData.length === 0) return { success: true };
+
+  const insertData = batchData.map(d => ({
+    "結案單號": d.formId, // 寫入 C01 表單號
+    "裝機日期": d.date,
+    "棟別": d.area,
+    "樓層": d.floor,
+    "使用單位": d.unit,
+    "姓名": d.applicantName,
+    "分機": d.applicantExt,
+    "核定ip": d.ip,
+    "主要mac": d.mac1 || "",
+    "產品序號": d.sn,
+    "設備名稱標記": d.deviceName,
+    "設備類型": d.deviceType,
+    "品牌型號": d.model || "未提供",
     "同步來源": "內部直通",
-    "行政備註": payload.remark || "",
+    "行政備註": d.remark || "",
     "狀態": "已結案"
-  }]);
-  
+  }));
+
+  const { error } = await supabase.from("historical_assets").insert(insertData);
+
   if (error) {
-    if (error.code === '23505') throw new Error("該產品序號 (S/N) 已經結案歸檔，不可重複直通入庫。");
+    if (error.code === '23505') throw new Error("部分產品序號 (S/N) 已經結案歸檔，不可重複直通入庫。");
     throw new Error("入庫寫入失敗: " + error.message);
   }
-  
-  await systemLog("管理員(Admin)", `執行內部直通結案 (C01單號: ${payload.formId}, SN: ${payload.sn})`);
-  return true;
+
+  await systemLog("管理員(Admin)", `執行內部直通結案 (共 ${batchData.length} 筆, 單號: ${batchData[0].formId})`);
+  return { success: true };
 }
 
 // --- 4. 管理端刪除資產 (含 Log) ---
