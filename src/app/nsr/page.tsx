@@ -9,12 +9,11 @@ import styles from "./nsr.module.css";
 /**
  * ==========================================
  * 檔案：src/app/nsr/page.tsx
- * 狀態：V400.7 獨立資料庫架構還原版 (精準真實 Schema 對齊)
+ * 狀態：V400.8 獨立資料庫架構 (排版完美防護版)
  * 職責：
- * 1. 獨立架構：完全脫離 historical_assets，專注寫入與讀取 nsr_records。
- * 2. 🚀 狀態對齊：將狀態詞彙對齊資料庫真實的「未處理」與「已計價結算」。
- * 3. 雙分頁架構：左側選單切換「申請錄入」與「計價結算」。
- * 4. 物理響應式：維持手機版卡片直向堆疊跳行顯示。
+ * 1. 🚀 電腦版排版修復：加入 whitespace-nowrap 與固定寬度保護，防止長文字導致「處理狀態」被擠壓成直向。
+ * 2. 🚀 手機版排版升級：捨棄 CSS 表格扭轉，改用物理 Two-Div 架構，實作完美的「真・卡片式跳行佈局」。
+ * 3. 獨立架構：完全脫離 historical_assets，專注寫入與讀取 nsr_records。
  * ==========================================
  */
 
@@ -88,7 +87,7 @@ export default function NsrPage() {
         let finalSn = r.sn.trim().toUpperCase();
         if (!finalSn) {
           const randomHex = Math.floor(Math.random() * 16777215).toString(16).toUpperCase().padStart(6, '0');
-          finalSn = `C${metadata.date.replace(/-/g, '')}${randomHex}`; // 根據您的範例改為 C 開頭
+          finalSn = `C${metadata.date.replace(/-/g, '')}${randomHex}`; 
         }
 
         return {
@@ -133,7 +132,6 @@ export default function NsrPage() {
   };
 
   const handleBatchMarkBilled = async () => {
-    // 🚀 狀態詞彙改為 未處理
     const unbilledRecords = records.filter(r => r.status === '未處理');
     if (unbilledRecords.length === 0) {
       showToast("目前畫面上沒有未處理的案件可以結算", "info");
@@ -200,7 +198,7 @@ export default function NsrPage() {
       <main className="w-full md:ml-64 flex-1 flex flex-col min-h-screen p-4 md:p-8">
         
         {/* =========================================
-            🚀 分頁 1：NSR 網點申請錄入
+            分頁 1：NSR 網點申請錄入
             ========================================= */}
         {activeTab === 'entry' && (
           <div className="animate-in fade-in zoom-in-95 duration-300">
@@ -266,7 +264,7 @@ export default function NsrPage() {
         )}
 
         {/* =========================================
-            🚀 分頁 2：網點計價結算
+            🚀 分頁 2：網點計價結算 (雙模組響應式完美修復版)
             ========================================= */}
         {activeTab === 'settlement' && (
           <div className="animate-in fade-in zoom-in-95 duration-300">
@@ -294,7 +292,6 @@ export default function NsrPage() {
                  <span className="text-xs font-black tracking-widest text-slate-500 uppercase whitespace-nowrap">狀態篩選</span>
                </div>
                <div className="w-full sm:w-auto flex gap-3 flex-col sm:flex-row">
-                 {/* 🚀 修正狀態選單，對應真實資料庫的 "未處理" */}
                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={styles.crystalInput}>
                     <option value="ALL">顯示全部狀態</option>
                     <option value="未處理">未處理</option>
@@ -312,45 +309,41 @@ export default function NsrPage() {
                 <span className="text-xs font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-full">共 {records.length} 筆</span>
               </div>
               
-              <div className={styles.tableContainer}>
-                <table className={`w-full text-left lg:min-w-[1000px] ${styles.responsiveTable}`}>
-                  <thead className={styles.desktopOnly}>
+              {/* 🚀 物理響應式 A：電腦版橫向表格 (加入寬度保護防擠壓) */}
+              <div className="hidden lg:block w-full overflow-x-auto">
+                <table className="w-full text-left min-w-[1000px]">
+                  <thead>
                     <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                      <th className="pb-4 px-4">申請單號</th>
-                      <th className="pb-4 px-4">申請單位 / 日期</th>
-                      <th className="pb-4 px-4">施工事由 / 規格</th>
-                      <th className="pb-4 px-4">處理狀態</th>
-                      <th className="pb-4 px-4 text-right">計價操作</th>
+                      <th className="pb-4 px-4 w-[160px] whitespace-nowrap">申請單號</th>
+                      <th className="pb-4 px-4 w-[200px] whitespace-nowrap">申請單位 / 日期</th>
+                      <th className="pb-4 px-4 min-w-[300px]">施工事由 / 規格</th>
+                      <th className="pb-4 px-4 w-[120px] whitespace-nowrap text-center">處理狀態</th>
+                      <th className="pb-4 px-4 w-[150px] whitespace-nowrap text-right">計價操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                     {records.map((record) => (
-                      <tr key={record.sn} className={`${styles.mobileCard} hover:bg-slate-50/50 transition-all`}>
-                        <td className={`${styles.mobileTd} p-4 align-top`} data-label="申請單號">
+                      <tr key={record.sn} className="hover:bg-slate-50/50 transition-all">
+                        <td className="p-4 align-top whitespace-nowrap">
                           <p className="font-mono text-sm font-black text-slate-600">{record.sn}</p>
                         </td>
-                        <td className={`${styles.mobileTd} p-4 font-bold align-top`} data-label="申請單位 / 日期">
+                        <td className="p-4 font-bold align-top whitespace-nowrap">
                           <p className="text-slate-800">{record.unit}</p>
                           <p className="text-[10px] text-slate-400 font-normal uppercase mt-0.5">{record.area} | {record.floor} | {record.date}</p>
-                          {/* 這裡的 applicantName 已經從後端合併了真實的分機號碼 */}
                           <p className="text-[10px] text-slate-500 font-normal mt-0.5 text-blue-600 bg-blue-50 inline-block px-1 rounded">{record.applicantName}</p>
                         </td>
-                        <td className={`${styles.mobileTd} p-4 align-top`} data-label="施工事由 / 規格">
+                        <td className="p-4 align-top">
                           <p className="font-bold text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded border border-sky-100 mb-1">{record.type}</p>
-                          <p className="text-[11px] font-bold text-slate-600 mb-1">{record.location}</p>
-                          {record.remark && <p className="text-[11px] text-slate-500 mt-1">{record.remark}</p>}
+                          <p className="text-[11px] font-bold text-slate-600 mb-1 break-words">{record.location}</p>
+                          {record.remark && <p className="text-[11px] text-slate-500 mt-1 break-words leading-relaxed">{record.remark}</p>}
                         </td>
-                        <td className={`${styles.mobileTd} p-4 align-top`} data-label="處理狀態">
-                          <div>
-                            {record.status === '未處理' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">未處理</span>}
-                            {record.status === '已計價結算' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm">已計價結算</span>}
-                          </div>
+                        <td className="p-4 align-top text-center whitespace-nowrap">
+                          {record.status === '未處理' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm inline-block">未處理</span>}
+                          {record.status === '已計價結算' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm inline-block">已計價結算</span>}
                         </td>
-                        <td className={`${styles.mobileTd} p-4 align-top lg:text-right`} data-label="管理操作">
-                          <div className={`flex flex-col lg:items-end gap-2 ${styles.mobileActionStack}`}>
-                             {record.status === '未處理' && <button onClick={() => handleMarkBilled(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2.5 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm bg-white flex items-center justify-center lg:justify-end gap-1"><span className={`material-symbols-outlined text-[16px] ${styles.iconFill}`}>price_check</span> 標記已計價</button>}
-                             {record.status === '已計價結算' && <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-full lg:w-auto py-2">結算作業完成</span>}
-                          </div>
+                        <td className="p-4 align-top text-right whitespace-nowrap">
+                           {record.status === '未處理' && <button onClick={() => handleMarkBilled(record.sn)} className="text-[10px] font-black uppercase tracking-widest px-4 py-2.5 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 hover:border-blue-300 transition-all shadow-sm bg-white flex items-center justify-end gap-1 ml-auto"><span className={`material-symbols-outlined text-[16px] ${styles.iconFill}`}>price_check</span> 標記已計價</button>}
+                           {record.status === '已計價結算' && <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block py-2">結算作業完成</span>}
                         </td>
                       </tr>
                     ))}
@@ -358,6 +351,47 @@ export default function NsrPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* 🚀 物理響應式 B：手機版真卡片佈局 (完全拋棄表格) */}
+              <div className="grid grid-cols-1 gap-5 lg:hidden w-full">
+                {records.map((record) => (
+                  <div key={record.sn} className={styles.deviceItemBlock}>
+                    <div className="flex justify-between items-center border-b border-slate-200/60 pb-3 mb-3">
+                      <span className="font-mono text-sm font-black text-slate-600">{record.sn}</span>
+                      <div>
+                        {record.status === '未處理' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">未處理</span>}
+                        {record.status === '已計價結算' && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 font-black uppercase tracking-widest shadow-sm">已計價結算</span>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                         <label className={styles.inputLabel}>申請單位 / 日期</label>
+                         <div className="bg-white/60 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700">
+                           {record.unit} ({record.area} {record.floor})
+                           <span className="text-blue-600 mt-1 block">{record.applicantName}</span>
+                           <span className="text-slate-400 mt-1 block font-mono text-[10px]">{record.date}</span>
+                         </div>
+                      </div>
+                      <div>
+                         <label className={styles.inputLabel}>工程明細 / 位置</label>
+                         <div className="bg-white/60 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700">
+                           <span className="text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-100 mr-2">{record.type}</span>
+                           <span className="break-words">{record.location}</span>
+                           {record.remark && <span className="text-slate-500 mt-2 block font-normal leading-relaxed text-[11px] bg-slate-50 p-2 rounded break-words">{record.remark}</span>}
+                         </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 pt-4 border-t border-slate-200/60 flex flex-col gap-2">
+                       {record.status === '未處理' && <button onClick={() => handleMarkBilled(record.sn)} className="w-full py-3.5 bg-white border border-blue-200 text-blue-600 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-50 transition-all shadow-sm flex items-center justify-center gap-2"><span className="material-symbols-outlined text-[16px]">price_check</span> 標記為已計價</button>}
+                       {record.status === '已計價結算' && <div className="w-full py-3.5 bg-slate-100 text-slate-400 rounded-xl font-black text-xs uppercase tracking-widest text-center border border-slate-200">結算作業完成</div>}
+                    </div>
+                  </div>
+                ))}
+                {records.length === 0 && !isLoading && <div className="py-20 text-center text-slate-400 font-bold italic">找不到符合條件的 NSR 計價紀錄。</div>}
+              </div>
+
             </div>
           </div>
         )}

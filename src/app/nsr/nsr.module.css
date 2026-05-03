@@ -1,5 +1,5 @@
 /* src/app/nsr/nsr.module.css */
-/* NSR 專用物理樣式矩陣 - V400.3 申請與結算雙軌完美支援版 */
+/* NSR 專用物理樣式矩陣 - V400.4 純淨版 (移除了舊的 CSS 表格扭轉程式碼) */
 
 .medicalGradient {
     background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
@@ -34,7 +34,7 @@
     background: #ffffff;
 }
 
-/* 🚀 申請錄入表單專用：獨立外框與格線 */
+/* 設備填寫區、與手機版卡片共用的獨立外框 */
 .deviceItemBlock {
     background: rgba(255, 255, 255, 0.4);
     border: 1px solid rgba(226, 232, 240, 0.8);
@@ -101,7 +101,6 @@
     transform: scale(1.1);
 }
 
-/* 載入與提示動畫 */
 .loaderOverlay {
     position: fixed;
     inset: 0;
@@ -152,89 +151,4 @@
 
 .iconFill {
     font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-}
-
-/* =========================================================
-   🚀 物理規則：手機版 Table 無捲軸 (直列卡片強制轉型)
-   加入 !important 確保完全覆蓋 Tailwind 的預設表單樣式
-   ========================================================= */
-.tableContainer {
-    width: 100%;
-    overflow-x: auto;
-}
-
-@media (max-width: 1024px) {
-    .tableContainer {
-        overflow-x: hidden !important; 
-    }
-    
-    .responsiveTable {
-        display: block !important;
-        width: 100% !important;
-        min-width: 0 !important; 
-    }
-    
-    .desktopOnly {
-        display: none !important;
-    }
-    
-    .responsiveTable tbody {
-        display: block !important;
-        width: 100% !important;
-    }
-    
-    .mobileCard {
-        display: flex !important;
-        flex-direction: column !important;
-        background: rgba(255, 255, 255, 0.9) !important;
-        border-radius: 1.5rem !important;
-        margin-bottom: 1.25rem !important;
-        padding: 1.25rem !important;
-        box-shadow: 0 4px 15px rgba(0, 97, 148, 0.05) !important;
-        border: 1px solid rgba(226, 232, 240, 0.8) !important;
-    }
-    
-    .mobileTd {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        padding: 0.75rem 0 !important;
-        border-bottom: 1px dashed #cbd5e1 !important;
-        width: 100% !important;
-        text-align: left !important;
-    }
-    
-    .mobileTd:last-child {
-        border-bottom: none !important;
-        padding-bottom: 0 !important;
-        padding-top: 1rem !important;
-    }
-    
-    .mobileTd::before {
-        content: attr(data-label);
-        font-size: 11px !important;
-        font-weight: 900 !important;
-        color: #94a3b8 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.1em !important;
-        margin-bottom: 0.5rem !important;
-        display: block !important;
-        width: 100% !important;
-        border-bottom: 2px solid #f1f5f9 !important;
-        padding-bottom: 4px !important;
-    }
-    
-    .mobileActionStack {
-        width: 100% !important;
-        flex-direction: column !important;
-        gap: 0.5rem !important;
-        align-items: stretch !important;
-    }
-    
-    .mobileActionStack button {
-        width: 100% !important;
-        justify-content: center !important;
-        padding-top: 0.75rem !important;
-        padding-bottom: 0.75rem !important;
-    }
 }
