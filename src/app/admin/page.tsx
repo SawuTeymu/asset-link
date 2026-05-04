@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-// 🚀 物理防護：改用相對路徑，防止 Next.js 找不到模組引發 Server Error
 import { 
   getDashboardStats, getHistoricalArchive, 
   getVendorsAdmin, addVendorAdmin, toggleVendorStatusAdmin, resetVendorPasswordAdmin,
@@ -142,6 +141,44 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // 🚀 新增：匯出 VANS 未尋獲名單 (產生 CSV 下載)
+  const handleExportVansNotFound = () => {
+    const targetRecords = historyRecords.filter(r => r.status === 'VANS未尋獲');
+    if (targetRecords.length === 0) {
+      showToast("目前畫面上沒有『VANS未尋獲』的資料可以匯出", "info");
+      return;
+    }
+
+    // 準備 CSV 表頭與內容
+    const headers = ["產品序號", "核定IP", "部署棟別", "樓層", "使用單位", "裝機日期", "設備類型", "MAC", "當前狀態"];
+    const csvRows = targetRecords.map(r => [
+      r.sn || "", 
+      r.ip || "", 
+      r.area || "", 
+      r.floor || "", 
+      r.unit || "", 
+      r.date || "", 
+      r.deviceType || "", 
+      r.mac || "", 
+      r.status || ""
+    ].join(","));
+    
+    // 加入 BOM 標記防止 Excel 開啟中文亂碼
+    const csvString = "\uFEFF" + headers.join(",") + "\n" + csvRows.join("\n");
+    
+    // 觸發下載
+    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `VANS未尋獲_清查清單_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showToast(`成功匯出 ${targetRecords.length} 筆待清查設備`, "success");
+  };
+
   const filteredHistory = historyRecords.filter(r => 
     r.sn.includes(searchHistory.toUpperCase()) || 
     r.unit.includes(searchHistory) ||
@@ -239,6 +276,10 @@ export default function AdminDashboardPage() {
                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                  <input type="text" placeholder="搜尋 產品序號 (S/N)、核定 IP、單位名稱或狀態 (如: VANS未尋獲)..." value={searchHistory} onChange={e => setSearchHistory(e.target.value)} className={`${styles.crystalInput} pl-12`} />
                </div>
+               {/* 🚀 新增：一鍵匯出 VANS 幽靈設備按鈕 */}
+               <button onClick={handleExportVansNotFound} className="text-xs font-black text-red-600 bg-red-50 hover:bg-red-100 px-4 py-3 rounded-xl shadow-sm border border-red-200 whitespace-nowrap transition-colors flex items-center gap-2">
+                 <span className="material-symbols-outlined text-sm">download</span> 匯出 VANS 未尋獲
+               </button>
                <div className="text-xs font-black text-slate-400 bg-white px-4 py-3 rounded-xl shadow-sm border border-slate-100 whitespace-nowrap">顯示最新 500 筆</div>
             </div>
 
@@ -309,7 +350,6 @@ export default function AdminDashboardPage() {
                       <div key={v.name} className={`${styles.deviceItemBlock} !p-4 !flex-row !items-center !gap-4 justify-between bg-white/60`}>
                          <div>
                            <h3 className="font-black text-slate-800 text-sm">{v.name}</h3>
-                           {/* 🚀 物理防護：移除可能導致 SSR 崩潰的 new Date 解析，改用安全的字串截斷 */}
                            <p className="text-[10px] text-slate-400 font-mono mt-1">註冊: {v.createdAt ? v.createdAt.substring(0, 10) : '無紀錄'}</p>
                          </div>
                          <div className="flex items-center gap-3">
