@@ -2,8 +2,8 @@
 
 import { supabase } from "../supabase";
 import { unstable_noStore as noStore } from "next/cache";
-// 🚀 物理防護：改用 @ 絕對路徑，防止資料夾層級錯亂
-import { systemLog } from "@/lib/actions/assets";
+// 🚀 物理防護：改用相對路徑，防止 Next.js 路徑解析器卡死
+import { systemLog } from "./assets";
 
 export async function getDashboardStats() {
   noStore();
