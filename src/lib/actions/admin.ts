@@ -2,18 +2,8 @@
 
 import { supabase } from "../supabase";
 import { unstable_noStore as noStore } from "next/cache";
-import { systemLog } from "./assets";
-
-/**
- * ==========================================
- * 檔案：src/lib/actions/admin.ts
- * 狀態：V2.0 總控台戰情中樞 (加入 VANS 智慧清洗引擎)
- * 職責：
- * 1. 儀表板統計與歷史庫讀取。
- * 2. 帳號管理：廠商帳號的新增、停權與密碼重置。
- * 3. 🚀 VANS 清洗：支援大數據 IP 分流上傳與觸發底層高速去重程序。
- * ==========================================
- */
+// 🚀 物理防護：改用 @ 絕對路徑，防止資料夾層級錯亂
+import { systemLog } from "@/lib/actions/assets";
 
 export async function getDashboardStats() {
   noStore();
@@ -87,7 +77,6 @@ export async function resetVendorPasswordAdmin(vendorName: string) {
   return { success: true };
 }
 
-// --- 🚀 新增：VANS IP 分流上傳 (防 12 萬筆 Payload 崩潰) ---
 export async function uploadVansIps(ips: string[]) {
   const chunkSize = 1000;
   for (let i = 0; i < ips.length; i += chunkSize) {
@@ -98,7 +87,6 @@ export async function uploadVansIps(ips: string[]) {
   return { success: true };
 }
 
-// --- 🚀 新增：觸發資料庫底層的高速清洗引擎 ---
 export async function executeVansCleansing() {
   const { error } = await supabase.rpc('run_vans_cleansing');
   if (error) throw new Error("清洗引擎執行失敗: " + error.message);
