@@ -141,7 +141,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // 🚀 修復：補回被遺漏的匯出功能函式
+  // 🚀 修復：加入嚴謹的 CSV 欄位跳脫機制，徹底防止內含的「半形逗號」破壞版面
   const handleExportVansNotFound = () => {
     const targetRecords = historyRecords.filter(r => r.status === 'VANS未尋獲');
     if (targetRecords.length === 0) {
@@ -149,18 +149,25 @@ export default function AdminDashboardPage() {
       return;
     }
 
+    // 🚀 防護網：將每個欄位加上雙引號，若內容有雙引號則替換為兩個雙引號，確保 CSV 語法正確
+    const escapeCSV = (value: any) => {
+      if (value === null || value === undefined) return '""';
+      const str = String(value);
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
     // 準備 CSV 表頭與內容
     const headers = ["產品序號", "核定IP", "部署棟別", "樓層", "使用單位", "裝機日期", "設備類型", "MAC", "當前狀態"];
     const csvRows = targetRecords.map(r => [
-      r.sn || "", 
-      r.ip || "", 
-      r.area || "", 
-      r.floor || "", 
-      r.unit || "", 
-      r.date || "", 
-      r.deviceType || "", 
-      r.mac || "", 
-      r.status || ""
+      escapeCSV(r.sn), 
+      escapeCSV(r.ip), 
+      escapeCSV(r.area), 
+      escapeCSV(r.floor), 
+      escapeCSV(r.unit), 
+      escapeCSV(r.date), 
+      escapeCSV(r.deviceType), 
+      escapeCSV(r.mac), 
+      escapeCSV(r.status)
     ].join(","));
     
     // 加入 BOM 標記防止 Excel 開啟中文亂碼
@@ -179,7 +186,6 @@ export default function AdminDashboardPage() {
     showToast(`成功匯出 ${targetRecords.length} 筆待清查設備`, "success");
   };
 
-  // 🚀 更新：加入建立時間降冪排序，確保畫面永遠「最新結案在最上方」
   const filteredHistory = historyRecords.filter(r => 
     r.sn.includes(searchHistory.toUpperCase()) || 
     r.unit.includes(searchHistory) ||
@@ -281,7 +287,6 @@ export default function AdminDashboardPage() {
                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                  <input type="text" placeholder="搜尋 產品序號 (S/N)、核定 IP、單位名稱或狀態 (如: VANS未尋獲)..." value={searchHistory} onChange={e => setSearchHistory(e.target.value)} className={`${styles.crystalInput} pl-12`} />
                </div>
-               {/* 🚀 恢復：原本漏掉的實體按鈕綁定 */}
                <button onClick={handleExportVansNotFound} className="text-xs font-black text-red-600 bg-red-50 hover:bg-red-100 px-4 py-3 rounded-xl shadow-sm border border-red-200 whitespace-nowrap transition-colors flex items-center gap-2">
                  <span className="material-symbols-outlined text-sm">download</span> 匯出 VANS 未尋獲
                </button>
