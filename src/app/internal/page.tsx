@@ -9,12 +9,11 @@ import styles from "./internal.module.css";
 /**
  * ==========================================
  * 檔案：src/app/internal/page.tsx
- * 狀態：V2.0 內部直通批次防呆升級版
+ * 狀態：V2.1 內部直通批次防呆升級版 (雙 MAC 支援)
  * 職責：
- * 1. 支援多節點設備同時錄入 (比照 Keyin 體驗)。
- * 2. 樓層欄位防呆：失去焦點時自動補 0 與 F (例如 '5' 變 '05F')。
- * 3. 自動 SN：留空時自動產生 AUTO 序號。
- * 4. 強制 C01：必須輸入以 C01 開頭的結案表單號。
+ * 1. 🚀 介面升級：為內部直通也補齊「有線 MAC」與「無線 MAC」的雙輸入支援。
+ * 2. 樓層欄位防呆：失去焦點時自動補 0 與 F。
+ * 3. 強制 C01：必須輸入以 C01 開頭的結案表單號。
  * ==========================================
  */
 
@@ -23,6 +22,7 @@ interface DeviceState {
   model: string;
   sn: string;
   mac1: string;
+  mac2: string; // 🚀 新增 無線 MAC
   ip: string;
   deviceName: string;
   remark: string;
@@ -35,7 +35,6 @@ export default function InternalEntryPage() {
   const [buildingOptions, setBuildings] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" | "info" }[]>([]);
 
-  // 🚀 行政資料擴充 C01 表單號
   const [metadata, setMetadata] = useState({ 
     c01FormId: "", 
     date: new Date().toISOString().split("T")[0], 
@@ -46,9 +45,8 @@ export default function InternalEntryPage() {
     applicantExt: "" 
   });
 
-  // 🚀 設備清單改為陣列支援批次
   const [devices, setDevices] = useState<DeviceState[]>([{ 
-    deviceType: "桌上型電腦", model: "", sn: "", mac1: "", ip: "", deviceName: "", remark: "" 
+    deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "" 
   }]);
 
   const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
@@ -73,22 +71,18 @@ export default function InternalEntryPage() {
     fetchBuildings();
   }, [router, fetchBuildings]);
 
-  // 🚀 樓層自動補齊邏輯
   const handleFloorBlur = () => {
     let val = metadata.floor.trim().toUpperCase().replace(/\s+/g, '');
     if (!val) return;
 
-    // 單純數字自動補 0 與 F (例如 5 -> 05F, 12 -> 12F)
     if (/^\d+$/.test(val)) {
       setMetadata({ ...metadata, floor: val.padStart(2, '0') + 'F' });
       return;
     }
-    // 已有 F 但缺 0 (例如 5F -> 05F)
     if (/^\d+F$/.test(val)) {
       setMetadata({ ...metadata, floor: val.replace(/\d+/, m => m.padStart(2, '0')) });
       return;
     }
-    // B開頭數字 (例如 B1 -> B1F)
     if (/^B\d+$/.test(val)) {
       setMetadata({ ...metadata, floor: val + 'F' });
       return;
@@ -96,20 +90,18 @@ export default function InternalEntryPage() {
     setMetadata({ ...metadata, floor: val });
   };
 
-  const handleMacInput = (index: number, val: string) => {
+  const handleMacInput = (index: number, val: string, field: 'mac1' | 'mac2') => {
     let macStr = val.toUpperCase().replace(/[^A-F0-9]/g, "");
     if (macStr.length > 12) macStr = macStr.substring(0, 12);
     const parts = macStr.match(/.{1,2}/g);
     const newDevices = [...devices];
-    newDevices[index].mac1 = parts ? parts.join(":") : macStr;
+    newDevices[index][field] = parts ? parts.join(":") : macStr;
     setDevices(newDevices);
   };
 
-  // 🚀 批次提交與防呆驗證
   const handleSubmit = async () => {
     if (isLoading) return;
     
-    // 檢查 C01 表單號
     const formId = metadata.c01FormId.trim().toUpperCase();
     if (!formId || !formId.startsWith("C01")) {
       showToast("表單號必須以 C01 開頭", "error");
@@ -121,7 +113,6 @@ export default function InternalEntryPage() {
       return;
     }
 
-    // 檢查設備必填欄位 (IP, 名稱)
     for (let i = 0; i < devices.length; i++) {
       if (!devices[i].ip || !devices[i].deviceName) {
         showToast(`第 ${i + 1} 項設備：請確保核定 IP 與設備名稱皆已填寫`, "error");
@@ -131,7 +122,6 @@ export default function InternalEntryPage() {
 
     setIsLoading(true);
     try {
-      // IP 衝突雙重確認
       for (const d of devices) {
         const isConflict = await checkIpConflict(d.ip);
         if (isConflict && !confirm(`注意：IP [${d.ip}] 在系統中已有紀錄，是否確定要強制覆寫入庫？`)) {
@@ -140,7 +130,6 @@ export default function InternalEntryPage() {
         }
       }
 
-      // 🚀 動態生成 SN
       const payload = devices.map(d => {
         let finalSn = d.sn.trim().toUpperCase();
         if (!finalSn) {
@@ -160,6 +149,7 @@ export default function InternalEntryPage() {
           model: d.model,
           sn: finalSn,
           mac1: d.mac1,
+          mac2: d.mac2, // 🚀 送出時封裝無線 MAC
           ip: d.ip.trim(),
           deviceName: d.deviceName.trim().toUpperCase(),
           remark: d.remark
@@ -170,9 +160,8 @@ export default function InternalEntryPage() {
       
       if (res.success) {
         showToast(`成功批次直通入庫 ${payload.length} 筆設備！`, "success");
-        // 初始化重置
         setMetadata({ c01FormId: "", date: new Date().toISOString().split("T")[0], area: buildingOptions[0]?.棟別名稱 || "", floor: "", unit: "", applicantName: "", applicantExt: "" });
-        setDevices([{ deviceType: "桌上型電腦", model: "", sn: "", mac1: "", ip: "", deviceName: "", remark: "" }]);
+        setDevices([{ deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "" }]);
       }
     } catch (err: any) {
       showToast(err.message, "error");
@@ -222,7 +211,6 @@ export default function InternalEntryPage() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-           {/* 左側：行政表單 */}
            <section className="col-span-1 lg:col-span-4">
               <div className={`${styles.clinicalGlass} rounded-3xl p-6 md:p-8 shadow-sm`}>
                 <div className="flex items-center gap-2 mb-8 border-b border-slate-100 pb-4">
@@ -232,28 +220,27 @@ export default function InternalEntryPage() {
                 <div className="space-y-5">
                    <div>
                      <label className={styles.inputLabel}>結案表單號 (強制 C01 開頭)</label>
-                     <input type="text" placeholder="如: C01202603200049" value={metadata.c01FormId} onChange={e => setMetadata({...metadata, c01FormId: e.target.value.toUpperCase()})} className={`${styles.crystalInput} border-purple-300 font-mono`} />
+                     <input type="text" value={metadata.c01FormId} onChange={e => setMetadata({...metadata, c01FormId: e.target.value.toUpperCase()})} className={`${styles.crystalInput} border-purple-300 font-mono`} />
                    </div>
                    <div><label className={styles.inputLabel}>入庫/裝機日期</label><input type="date" value={metadata.date} onChange={e => setMetadata({...metadata, date: e.target.value})} className={styles.crystalInput} /></div>
                    <div className="grid grid-cols-2 gap-4">
                      <div><label className={styles.inputLabel}>部署棟別</label><select value={metadata.area} onChange={e => setMetadata({...metadata, area: e.target.value})} className={styles.crystalInput}>{buildingOptions.map(v => <option key={v.棟別代碼} value={v.棟別名稱}>{v.棟別名稱}</option>)}</select></div>
-                     <div><label className={styles.inputLabel}>樓層</label><input type="text" value={metadata.floor} onChange={e => setMetadata({...metadata, floor: e.target.value})} onBlur={handleFloorBlur} placeholder="如: 5" className={styles.crystalInput} /></div>
+                     <div><label className={styles.inputLabel}>樓層</label><input type="text" value={metadata.floor} onChange={e => setMetadata({...metadata, floor: e.target.value})} onBlur={handleFloorBlur} className={styles.crystalInput} /></div>
                    </div>
-                   <div><label className={styles.inputLabel}>使用單位</label><input type="text" value={metadata.unit} onChange={e => setMetadata({...metadata, unit: e.target.value})} placeholder="單位全稱" className={styles.crystalInput} /></div>
+                   <div><label className={styles.inputLabel}>使用單位</label><input type="text" value={metadata.unit} onChange={e => setMetadata({...metadata, unit: e.target.value})} className={styles.crystalInput} /></div>
                    <div className="grid grid-cols-2 gap-4">
-                     <div><label className={styles.inputLabel}>聯絡人姓名</label><input type="text" value={metadata.applicantName} onChange={e => setMetadata({...metadata, applicantName: e.target.value})} placeholder="姓名" className={styles.crystalInput} /></div>
-                     <div><label className={styles.inputLabel}>分機號碼</label><input type="text" value={metadata.applicantExt} onChange={e => setMetadata({...metadata, applicantExt: e.target.value})} placeholder="分機" className={styles.crystalInput} /></div>
+                     <div><label className={styles.inputLabel}>聯絡人姓名</label><input type="text" value={metadata.applicantName} onChange={e => setMetadata({...metadata, applicantName: e.target.value})} className={styles.crystalInput} /></div>
+                     <div><label className={styles.inputLabel}>分機號碼</label><input type="text" value={metadata.applicantExt} onChange={e => setMetadata({...metadata, applicantExt: e.target.value})} className={styles.crystalInput} /></div>
                    </div>
                 </div>
               </div>
            </section>
 
-           {/* 右側：批次設備表單 */}
            <section className="col-span-1 lg:col-span-8 flex flex-col">
               <div className={`${styles.clinicalGlass} rounded-3xl p-6 md:p-8 shadow-sm flex flex-col flex-1`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 border-b border-slate-100 pb-4">
                    <div className="flex items-center gap-2"><span className={`material-symbols-outlined text-blue-600 ${styles.iconFill}`}>dns</span><h2 className="text-lg font-bold text-slate-800 tracking-tight">入庫設備節點清單</h2></div>
-                   <button onClick={() => setDevices([...devices, { deviceType: "桌上型電腦", model: "", sn: "", mac1: "", ip: "", deviceName: "", remark: "" }])} className="text-purple-600 font-black text-[10px] uppercase tracking-[0.2em] bg-purple-50 px-5 py-2.5 rounded-xl hover:bg-purple-100 transition-all border border-purple-100 shadow-sm">+ 新增設備</button>
+                   <button onClick={() => setDevices([...devices, { deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "" }])} className="text-purple-600 font-black text-[10px] uppercase tracking-[0.2em] bg-purple-50 px-5 py-2.5 rounded-xl hover:bg-purple-100 transition-all border border-purple-100 shadow-sm">+ 新增設備</button>
                 </div>
 
                 <div className="flex flex-col gap-5 w-full">
@@ -261,17 +248,22 @@ export default function InternalEntryPage() {
                     <div key={i} className={styles.deviceItemBlock}>
                       <div className={styles.rowGrid}>
                         <div><label className={styles.inputLabel}>設備類型</label><select value={d.deviceType} onChange={e => { const nd = [...devices]; nd[i].deviceType = e.target.value; setDevices(nd); }} className={styles.crystalInput}><option>桌上型電腦</option><option>筆記型電腦</option><option>印表機</option><option>醫療儀器</option><option>其他設備</option></select></div>
-                        <div><label className={styles.inputLabel}>品牌型號</label><input placeholder="品牌型號" value={d.model} onChange={e => { const nd = [...devices]; nd[i].model = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
-                        <div><label className={styles.inputLabel}>產品序號 (留空自動補)</label><input placeholder="自動產生 AUTO 序號" value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
+                        <div><label className={styles.inputLabel}>品牌型號</label><input value={d.model} onChange={e => { const nd = [...devices]; nd[i].model = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
+                        <div><label className={styles.inputLabel}>產品序號 (留空自動補)</label><input value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
                       </div>
+                      
+                      {/* 🚀 物理修復：排版優化，加入有線與無線 MAC */}
                       <div className={styles.rowGrid}>
-                        <div><label className={styles.inputLabel}>配置 IP</label><input placeholder="10.x.x.x" value={d.ip} onChange={e => { const nd = [...devices]; nd[i].ip = e.target.value; setDevices(nd); }} className={`${styles.crystalInput} font-mono text-emerald-600 border-emerald-200`} /></div>
-                        <div><label className={styles.inputLabel}>設備識別名稱</label><input placeholder="電腦名稱" value={d.deviceName} onChange={e => { const nd = [...devices]; nd[i].deviceName = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-blue-600 border-blue-200`} /></div>
-                        <div><label className={styles.inputLabel}>MAC 位址</label><input placeholder="有線 MAC" value={d.mac1} onChange={e => handleMacInput(i, e.target.value)} className={`${styles.crystalInput} font-mono`} /></div>
+                        <div><label className={styles.inputLabel}>配置 IP</label><input value={d.ip} onChange={e => { const nd = [...devices]; nd[i].ip = e.target.value; setDevices(nd); }} className={`${styles.crystalInput} font-mono text-emerald-600 border-emerald-200`} /></div>
+                        <div><label className={styles.inputLabel}>有線 MAC</label><input value={d.mac1} onChange={e => handleMacInput(i, e.target.value, 'mac1')} className={`${styles.crystalInput} font-mono`} /></div>
+                        <div><label className={styles.inputLabel}>無線 MAC</label><input value={d.mac2} onChange={e => handleMacInput(i, e.target.value, 'mac2')} className={`${styles.crystalInput} font-mono text-slate-400`} /></div>
                       </div>
-                      <div className="w-full">
-                         <label className={styles.inputLabel}>內部直通備註</label><input placeholder="如: 單位緊急擴編配置" value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-1">
+                         <div><label className={styles.inputLabel}>設備識別名稱</label><input value={d.deviceName} onChange={e => { const nd = [...devices]; nd[i].deviceName = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-blue-600 border-blue-200`} /></div>
+                         <div><label className={styles.inputLabel}>內部直通備註</label><input value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
                       </div>
+
                       {devices.length > 1 && <button onClick={() => setDevices(devices.filter((_, idx) => idx !== i))} className={styles.removeBtn}><span className="material-symbols-outlined text-[14px]">close</span></button>}
                     </div>
                   ))}

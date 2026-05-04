@@ -7,19 +7,6 @@ import { getVendorProgress, vendorConfirmAsset, submitAssetBatch, withdrawVendor
 import { updateVendorPassword } from "@/lib/actions/users";
 import styles from "./keyin.module.css";
 
-/**
- * ==========================================
- * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.11 廠商日誌防護完整版 (優化介面體驗)
- * 職責：
- * 1. 業務規則升級：舊換新作業改為強制填寫「舊機 IP」，更符合實務操作。
- * 2. 介面優化：移除「設備類型」交由管理員判定；強化「作業類型」視覺警示；移除行政資料輸入框的提示字。
- * 3. 自動標籤封裝：舊換新會自動產生 [REPLACE] 汰換舊機IP 標籤以對接後端。
- * 4. 載入修正還原：被退回的案件能自動解析字串，精準還原舊機 IP 欄位。
- * 5. 縮短 SN：採用 A + 月日(4碼) + 隨機(4碼) 精簡格式。
- * ==========================================
- */
-
 interface DeviceState {
   actionType: "新機" | "舊換新";
   model: string;
@@ -387,8 +374,9 @@ export default function KeyinPage() {
                           
                           <div className={styles.rowGrid}>
                             <div><label className={styles.inputLabel}>新設備 S/N (留空自動產生)</label><input placeholder="留空將自動產生" value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
-                            <div><label className={styles.inputLabel}>主要 MAC</label><input value={d.mac} onChange={e => handleMacInput(i, e.target.value, "mac")} className={`${styles.crystalInput} font-mono text-blue-600`} /></div>
-                            <div><label className={styles.inputLabel}>無線 MAC (可選)</label><input value={d.mac2} onChange={e => handleMacInput(i, e.target.value, "mac2")} className={`${styles.crystalInput} font-mono text-slate-400`} /></div>
+                            {/* 🚀 物理修復：正名為 有線 MAC 與 無線 MAC */}
+                            <div><label className={styles.inputLabel}>有線 MAC</label><input value={d.mac} onChange={e => handleMacInput(i, e.target.value, "mac")} className={`${styles.crystalInput} font-mono text-blue-600`} /></div>
+                            <div><label className={styles.inputLabel}>無線 MAC</label><input value={d.mac2} onChange={e => handleMacInput(i, e.target.value, "mac2")} className={`${styles.crystalInput} font-mono text-slate-400`} /></div>
                           </div>
 
                           {d.actionType === '舊換新' && (
@@ -455,7 +443,8 @@ export default function KeyinPage() {
                           </td>
                           <td className="p-4 align-top">
                             <p className="font-bold text-slate-600">{record.model}</p>
-                            <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">MAC: <span className="font-black text-blue-600">{record.mac1}</span></p>
+                            <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">有線: <span className="font-black text-blue-600">{record.mac1}</span></p>
+                            {record.mac2 && <p className="text-[10px] font-mono text-slate-500 uppercase mt-0.5">無線: <span className="font-black text-slate-500">{record.mac2}</span></p>}
                             {record.assignedIp && (
                               <p className="text-[10px] font-bold text-emerald-600 mt-1.5 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-100">核發 IP: {record.assignedIp}</p>
                             )}
@@ -515,7 +504,8 @@ export default function KeyinPage() {
                            <label className={styles.inputLabel}>設備參數</label>
                            <div className="bg-white/60 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-700">
                              {record.model}
-                             <span className="text-blue-600 font-mono mt-1 block tracking-widest">{record.mac1}</span>
+                             <span className="text-blue-600 font-mono mt-1 block tracking-widest">有線: {record.mac1}</span>
+                             {record.mac2 && <span className="text-slate-500 font-mono mt-1 block tracking-widest">無線: {record.mac2}</span>}
                            </div>
                         </div>
                         

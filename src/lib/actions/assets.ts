@@ -6,16 +6,14 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V400.12 內部直通批次升級版 + 舊機 IP 汰換引擎
+ * 狀態：V400.13 內部直通批次升級版 + 雙 MAC 支援
  * 職責：
- * 1. 🚀 舊換新邏輯升級：submitAssetBatch 改為接收 old_ip，並將歷史庫中的舊機自動標記為「汰換作廢」。
- * 2. 內部直通升級：submitInternalBatch 支援多設備陣列寫入與 C01 單號對接。
- * 3. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼 (123456)。
- * 4. 全域日誌：實作 systemLog，強制記錄廠商與管理員的所有增刪改查動作。
+ * 1. 🚀 雙 MAC 支援：確保 submitInternalBatch 也會將「無線mac」寫入資料庫。
+ * 2. 舊換新邏輯升級：submitAssetBatch 接收 old_ip 作廢舊機。
+ * 3. 物理防護：嚴格檢查 vendors 狀態，阻擋預設密碼 (123456)。
  * ==========================================
  */
 
-// --- 0. 全域系統日誌寫入函式 (System Logger) ---
 export async function systemLog(operator: string, action: string) {
   try {
     await supabase.from("system_logs").insert([{ operator, action }]);
@@ -24,7 +22,6 @@ export async function systemLog(operator: string, action: string) {
   }
 }
 
-// --- 1. 廠商權限驗證 (物理守門員) ---
 async function verifyVendorAuth(vendorName: string) {
   if (!vendorName) throw new Error("缺少廠商識別名稱，拒絕存取");
   
@@ -49,7 +46,6 @@ async function verifyVendorAuth(vendorName: string) {
   }
 }
 
-// --- 2. IP 衝突檢查 ---
 export async function checkIpConflict(ip: string) {
   const cleanIp = ip.trim();
   if (!cleanIp) return false;
@@ -61,7 +57,6 @@ export async function checkIpConflict(ip: string) {
   return !!active;
 }
 
-// --- 3. 內部直通批次入庫 (支援多設備與 C01 表單號) ---
 export async function submitInternalBatch(batchData: any[]) {
   if (!batchData || batchData.length === 0) return { success: true };
 
@@ -75,6 +70,7 @@ export async function submitInternalBatch(batchData: any[]) {
     "分機": d.applicantExt,
     "核定ip": d.ip,
     "主要mac": d.mac1 || "",
+    "無線mac": d.mac2 || "", // 🚀 補齊內部直通的無線 MAC 寫入
     "產品序號": d.sn,
     "設備名稱標記": d.deviceName,
     "設備類型": d.deviceType,
@@ -95,7 +91,6 @@ export async function submitInternalBatch(batchData: any[]) {
   return { success: true };
 }
 
-// --- 4. 管理端刪除資產 (含 Log) ---
 export async function deleteAssetAdmin(sn: string) {
   const { error } = await supabase.from("資產").delete().eq("產品序號", sn);
   if (error) throw new Error("資產刪除失敗: " + error.message);
@@ -103,7 +98,6 @@ export async function deleteAssetAdmin(sn: string) {
   return { success: true };
 }
 
-// --- 5. 取得待核定清單 ---
 export async function getAdminPendingData() {
   noStore();
   const { data, error } = await supabase
@@ -123,7 +117,6 @@ export async function getAdminPendingData() {
   }));
 }
 
-// --- 6. 行政核發資產 (含 Log) ---
 export async function approveAsset(sn: string, ip: string, deviceName: string, type: string) {
   const cleanSn = sn.trim();
   const cleanIp = ip.trim();
@@ -142,7 +135,6 @@ export async function approveAsset(sn: string, ip: string, deviceName: string, t
   } catch (err: any) { throw err; }
 }
 
-// --- 7. 行政退回案件 (含 Log) ---
 export async function rejectAsset(sn: string, reason: string) {
   const cleanSn = sn.trim();
   const cleanReason = reason.trim();
@@ -160,7 +152,6 @@ export async function rejectAsset(sn: string, reason: string) {
   } catch (err: any) { throw err; }
 }
 
-// --- 8. 取得廠商進度 ---
 export async function getVendorProgress(vendor: string) {
   noStore();
   await verifyVendorAuth(vendor);
@@ -195,7 +186,6 @@ export async function getVendorProgress(vendor: string) {
     });
 }
 
-// --- 9. 廠商確認結案歸檔 (含 Log) ---
 export async function vendorConfirmAsset(sn: string) {
   const { data: asset, error: fetchErr } = await supabase.from("資產").select("*").eq("產品序號", sn).single();
   if (fetchErr || !asset) throw new Error("找不到該核定案件");
@@ -218,20 +208,15 @@ export async function vendorConfirmAsset(sn: string) {
   return { success: true };
 }
 
-// --- 10. 批次提交預約 (含 Log & 舊機 IP 汰換引擎) ---
 export async function submitAssetBatch(batchData: any[]) {
   if (!batchData || batchData.length === 0) return { success: true };
 
   const vendorName = batchData[0].vendor || batchData[0].來源廠商;
   await verifyVendorAuth(vendorName);
 
-  // 🚀 物理替換：攔截舊換新作業，使用 old_ip 精準作廢舊機
   for (const d of batchData) {
     if (d.old_ip) {
-      // 1. 若待核定區有卡住相同 IP 的異常資料，直接刪除釋放
       await supabase.from("資產").delete().eq("核定ip", d.old_ip);
-      
-      // 2. 將歷史結案庫中，佔用此舊 IP 的設備狀態直接標記為「汰換作廢」
       await supabase.from("historical_assets").update({ "狀態": "汰換作廢" }).eq("核定ip", d.old_ip);
     }
   }
@@ -252,7 +237,6 @@ export async function submitAssetBatch(batchData: any[]) {
   return { success: true };
 }
 
-// --- 11. 廠商撤回申請 (含 Log) ---
 export async function withdrawVendorAsset(sn: string, vendorName: string) {
   await verifyVendorAuth(vendorName);
   const { error } = await supabase.from("資產").delete().eq("產品序號", sn).eq("來源廠商", vendorName);
