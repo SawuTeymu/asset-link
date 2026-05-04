@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+// 🚀 物理防護：改用相對路徑，防止 Next.js 找不到模組引發 Server Error
 import { 
   getDashboardStats, getHistoricalArchive, 
   getVendorsAdmin, addVendorAdmin, toggleVendorStatusAdmin, resetVendorPasswordAdmin,
   uploadVansIps, executeVansCleansing 
-} from "@/lib/actions/admin";
+} from "../../lib/actions/admin";
 import styles from "./admin.module.css";
 
 export default function AdminDashboardPage() {
@@ -306,7 +307,11 @@ export default function AdminDashboardPage() {
                   <div className="flex flex-col gap-4">
                     {vendors.map((v) => (
                       <div key={v.name} className={`${styles.deviceItemBlock} !p-4 !flex-row !items-center !gap-4 justify-between bg-white/60`}>
-                         <div><h3 className="font-black text-slate-800 text-sm">{v.name}</h3></div>
+                         <div>
+                           <h3 className="font-black text-slate-800 text-sm">{v.name}</h3>
+                           {/* 🚀 物理防護：移除可能導致 SSR 崩潰的 new Date 解析，改用安全的字串截斷 */}
+                           <p className="text-[10px] text-slate-400 font-mono mt-1">註冊: {v.createdAt ? v.createdAt.substring(0, 10) : '無紀錄'}</p>
+                         </div>
                          <div className="flex items-center gap-3">
                            <span className={`text-[10px] font-black px-3 py-1 rounded-full border ${v.status === '正常' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{v.status}</span>
                            <div className="flex gap-2">
