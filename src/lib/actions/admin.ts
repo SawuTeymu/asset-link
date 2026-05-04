@@ -2,7 +2,6 @@
 
 import { supabase } from "../supabase";
 import { unstable_noStore as noStore } from "next/cache";
-// 🚀 物理防護：改用相對路徑，防止 Next.js 路徑解析器卡死
 import { systemLog } from "./assets";
 
 export async function getDashboardStats() {
@@ -29,7 +28,6 @@ export async function getDashboardStats() {
 
 export async function getHistoricalArchive(limit = 500) {
   noStore();
-  // 🚀 物理修復：在資料庫撈取時，強制加入雙重降冪排序 (建立時間優先)
   const { data, error } = await supabase
     .from("historical_assets")
     .select("*")
@@ -41,10 +39,20 @@ export async function getHistoricalArchive(limit = 500) {
   
   const typedData = data as unknown as Record<string, unknown>[];
   return typedData.map(r => ({
-    sn: String(r.產品序號 || ""), date: String(r.裝機日期 || ""), unit: String(r.使用單位 || ""),
-    area: String(r.棟別 || ""), floor: String(r.樓層 || ""), model: String(r.品牌型號 || ""),
-    deviceType: String(r.設備類型 || ""), ip: String(r.核定ip || ""), mac: String(r.主要mac || ""),
-    status: String(r.狀態 || ""), source: String(r.同步來源 || ""), remark: String(r.行政備註 || ""), created_at: String(r.建立時間 || "")
+    sn: String(r.產品序號 || ""), 
+    deviceName: String(r.設備名稱標記 || ""), // 🚀 補上設備名稱抓取
+    date: String(r.裝機日期 || ""), 
+    unit: String(r.使用單位 || ""),
+    area: String(r.棟別 || ""), 
+    floor: String(r.樓層 || ""), 
+    model: String(r.品牌型號 || ""),
+    deviceType: String(r.設備類型 || ""), 
+    ip: String(r.核定ip || ""), 
+    mac: String(r.主要mac || ""),
+    status: String(r.狀態 || ""), 
+    source: String(r.同步來源 || ""), 
+    remark: String(r.行政備註 || ""), 
+    created_at: String(r.建立時間 || "")
   }));
 }
 

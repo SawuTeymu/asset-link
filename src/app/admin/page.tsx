@@ -141,7 +141,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // 🚀 修復：加入嚴謹的 CSV 欄位跳脫機制，徹底防止內含的「半形逗號」破壞版面
   const handleExportVansNotFound = () => {
     const targetRecords = historyRecords.filter(r => r.status === 'VANS未尋獲');
     if (targetRecords.length === 0) {
@@ -149,17 +148,16 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    // 🚀 防護網：將每個欄位加上雙引號，若內容有雙引號則替換為兩個雙引號，確保 CSV 語法正確
     const escapeCSV = (value: any) => {
       if (value === null || value === undefined) return '""';
       const str = String(value);
       return `"${str.replace(/"/g, '""')}"`;
     };
 
-    // 準備 CSV 表頭與內容
-    const headers = ["產品序號", "核定IP", "部署棟別", "樓層", "使用單位", "裝機日期", "設備類型", "MAC", "當前狀態"];
+    // 🚀 CSV 標頭與資料：改列「設備名稱」
+    const headers = ["設備名稱", "核定IP", "部署棟別", "樓層", "使用單位", "裝機日期", "設備類型", "MAC", "當前狀態"];
     const csvRows = targetRecords.map(r => [
-      escapeCSV(r.sn), 
+      escapeCSV(r.deviceName || "未命名"), 
       escapeCSV(r.ip), 
       escapeCSV(r.area), 
       escapeCSV(r.floor), 
@@ -170,10 +168,8 @@ export default function AdminDashboardPage() {
       escapeCSV(r.status)
     ].join(","));
     
-    // 加入 BOM 標記防止 Excel 開啟中文亂碼
     const csvString = "\uFEFF" + headers.join(",") + "\n" + csvRows.join("\n");
     
-    // 觸發下載
     const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -186,8 +182,9 @@ export default function AdminDashboardPage() {
     showToast(`成功匯出 ${targetRecords.length} 筆待清查設備`, "success");
   };
 
+  // 🚀 搜尋過濾：改為以設備名稱 (deviceName) 為主要搜尋條件
   const filteredHistory = historyRecords.filter(r => 
-    r.sn.includes(searchHistory.toUpperCase()) || 
+    (r.deviceName && r.deviceName.toUpperCase().includes(searchHistory.toUpperCase())) || 
     r.unit.includes(searchHistory) ||
     r.ip.includes(searchHistory) ||
     r.status.includes(searchHistory)
@@ -285,7 +282,8 @@ export default function AdminDashboardPage() {
             <div className={`${styles.clinicalGlass} rounded-2xl p-5 mb-6 flex flex-col sm:flex-row gap-4 items-center shadow-sm`}>
                <div className="w-full flex-1 relative">
                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-                 <input type="text" placeholder="搜尋 產品序號 (S/N)、核定 IP、單位名稱或狀態 (如: VANS未尋獲)..." value={searchHistory} onChange={e => setSearchHistory(e.target.value)} className={`${styles.crystalInput} pl-12`} />
+                 {/* 🚀 搜尋框提示同步改為設備名稱 */}
+                 <input type="text" placeholder="搜尋 設備名稱、核定 IP、單位名稱或狀態 (如: VANS未尋獲)..." value={searchHistory} onChange={e => setSearchHistory(e.target.value)} className={`${styles.crystalInput} pl-12`} />
                </div>
                <button onClick={handleExportVansNotFound} className="text-xs font-black text-red-600 bg-red-50 hover:bg-red-100 px-4 py-3 rounded-xl shadow-sm border border-red-200 whitespace-nowrap transition-colors flex items-center gap-2">
                  <span className="material-symbols-outlined text-sm">download</span> 匯出 VANS 未尋獲
@@ -298,7 +296,8 @@ export default function AdminDashboardPage() {
                 <table className={`w-full text-left lg:min-w-[1000px] ${styles.responsiveTable}`}>
                   <thead className={styles.desktopOnly}>
                     <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                      <th className="pb-4 px-4 w-[160px]">產品序號 / IP</th>
+                      {/* 🚀 標題正名為 設備名稱 / IP */}
+                      <th className="pb-4 px-4 w-[160px]">設備名稱 / IP</th>
                       <th className="pb-4 px-4 w-[200px]">部署單位 / 裝機日</th>
                       <th className="pb-4 px-4 min-w-[250px]">設備參數 / 備註</th>
                       <th className="pb-4 px-4 w-[120px]">同步來源</th>
@@ -308,8 +307,9 @@ export default function AdminDashboardPage() {
                   <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                     {filteredHistory.map((record, idx) => (
                       <tr key={`${record.sn}-${idx}`} className={`${styles.mobileCard} hover:bg-slate-50/50 transition-all`}>
-                        <td className={`${styles.mobileTd} p-4 align-top whitespace-nowrap`} data-label="產品序號 / IP">
-                          <p className="font-mono text-sm font-black text-slate-600">{record.sn}</p>
+                        <td className={`${styles.mobileTd} p-4 align-top whitespace-nowrap`} data-label="設備名稱 / IP">
+                          {/* 🚀 顯示資料改為 deviceName (設備名稱標記) */}
+                          <p className="font-mono text-sm font-black text-blue-700">{record.deviceName || "未命名設備"}</p>
                           {record.ip && <p className="text-[11px] font-mono text-emerald-600 mt-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 inline-block">{record.ip}</p>}
                         </td>
                         <td className={`${styles.mobileTd} p-4 font-bold align-top whitespace-nowrap`} data-label="部署單位 / 裝機日">
