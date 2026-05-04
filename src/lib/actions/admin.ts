@@ -29,7 +29,14 @@ export async function getDashboardStats() {
 
 export async function getHistoricalArchive(limit = 500) {
   noStore();
-  const { data, error } = await supabase.from("historical_assets").select("*").order("建立時間", { ascending: false }).limit(limit);
+  // 🚀 物理修復：在資料庫撈取時，強制加入雙重降冪排序 (建立時間優先)
+  const { data, error } = await supabase
+    .from("historical_assets")
+    .select("*")
+    .order("建立時間", { ascending: false })
+    .order("裝機日期", { ascending: false })
+    .limit(limit);
+
   if (error) throw new Error("歷史庫讀取失敗: " + error.message);
   
   const typedData = data as unknown as Record<string, unknown>[];

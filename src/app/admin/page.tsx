@@ -141,7 +141,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // 🚀 新增：匯出 VANS 未尋獲名單 (產生 CSV 下載)
+  // 🚀 修復：補回被遺漏的匯出功能函式
   const handleExportVansNotFound = () => {
     const targetRecords = historyRecords.filter(r => r.status === 'VANS未尋獲');
     if (targetRecords.length === 0) {
@@ -179,12 +179,17 @@ export default function AdminDashboardPage() {
     showToast(`成功匯出 ${targetRecords.length} 筆待清查設備`, "success");
   };
 
+  // 🚀 更新：加入建立時間降冪排序，確保畫面永遠「最新結案在最上方」
   const filteredHistory = historyRecords.filter(r => 
     r.sn.includes(searchHistory.toUpperCase()) || 
     r.unit.includes(searchHistory) ||
     r.ip.includes(searchHistory) ||
     r.status.includes(searchHistory)
-  );
+  ).sort((a, b) => {
+    const timeA = new Date(a.created_at || 0).getTime();
+    const timeB = new Date(b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
 
   return (
     <div className={`min-h-screen text-slate-800 antialiased flex relative overflow-x-hidden ${styles.medicalGradient}`}>
@@ -276,7 +281,7 @@ export default function AdminDashboardPage() {
                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                  <input type="text" placeholder="搜尋 產品序號 (S/N)、核定 IP、單位名稱或狀態 (如: VANS未尋獲)..." value={searchHistory} onChange={e => setSearchHistory(e.target.value)} className={`${styles.crystalInput} pl-12`} />
                </div>
-               {/* 🚀 新增：一鍵匯出 VANS 幽靈設備按鈕 */}
+               {/* 🚀 恢復：原本漏掉的實體按鈕綁定 */}
                <button onClick={handleExportVansNotFound} className="text-xs font-black text-red-600 bg-red-50 hover:bg-red-100 px-4 py-3 rounded-xl shadow-sm border border-red-200 whitespace-nowrap transition-colors flex items-center gap-2">
                  <span className="material-symbols-outlined text-sm">download</span> 匯出 VANS 未尋獲
                </button>
