@@ -9,23 +9,26 @@ import styles from "./internal.module.css";
 /**
  * ==========================================
  * 檔案：src/app/internal/page.tsx
- * 狀態：V2.1 內部直通批次防呆升級版 (雙 MAC 支援)
+ * 狀態：V2.2 內部直通批次防呆升級版 (加入舊換新機制)
  * 職責：
- * 1. 🚀 介面升級：為內部直通也補齊「有線 MAC」與「無線 MAC」的雙輸入支援。
- * 2. 樓層欄位防呆：失去焦點時自動補 0 與 F。
- * 3. 強制 C01：必須輸入以 C01 開頭的結案表單號。
+ * 1. 🚀 業務規則同步：加入「作業類型」(新機/舊換新) 下拉選單與高亮視覺。
+ * 2. 舊機 IP 防呆：若選擇舊換新，強制要求輸入舊機 IP，並自動封裝 [REPLACE] 標籤。
+ * 3. 雙 MAC 支援：維持有線與無線 MAC 的輸入功能。
+ * 4. 樓層與單號防呆：維持樓層自動補 0 與 F，及強制 C01 表單號。
  * ==========================================
  */
 
 interface DeviceState {
+  actionType: "新機" | "舊換新"; // 🚀 新增作業類型
   deviceType: string;
   model: string;
   sn: string;
   mac1: string;
-  mac2: string; // 🚀 新增 無線 MAC
+  mac2: string;
   ip: string;
   deviceName: string;
   remark: string;
+  oldIp: string; // 🚀 新增舊機 IP 欄位
 }
 
 export default function InternalEntryPage() {
@@ -46,7 +49,7 @@ export default function InternalEntryPage() {
   });
 
   const [devices, setDevices] = useState<DeviceState[]>([{ 
-    deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "" 
+    actionType: "新機", deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "", oldIp: "" 
   }]);
 
   const showToast = useCallback((msg: string, type: "success" | "error" | "info" = "info") => {
@@ -113,7 +116,12 @@ export default function InternalEntryPage() {
       return;
     }
 
+    // 🚀 強制驗證舊機 IP 與必要欄位
     for (let i = 0; i < devices.length; i++) {
+      if (devices[i].actionType === "舊換新" && !devices[i].oldIp.trim()) {
+        showToast(`第 ${i + 1} 項設備為「舊換新」，請務必填寫欲汰換的舊機 IP`, "error");
+        return;
+      }
       if (!devices[i].ip || !devices[i].deviceName) {
         showToast(`第 ${i + 1} 項設備：請確保核定 IP 與設備名稱皆已填寫`, "error");
         return;
@@ -124,7 +132,7 @@ export default function InternalEntryPage() {
     try {
       for (const d of devices) {
         const isConflict = await checkIpConflict(d.ip);
-        if (isConflict && !confirm(`注意：IP [${d.ip}] 在系統中已有紀錄，是否確定要強制覆寫入庫？`)) {
+        if (isConflict && !confirm(`注意：新配置 IP [${d.ip}] 在系統中已有紀錄，是否確定要強制覆寫入庫？`)) {
           setIsLoading(false);
           return;
         }
@@ -149,10 +157,12 @@ export default function InternalEntryPage() {
           model: d.model,
           sn: finalSn,
           mac1: d.mac1,
-          mac2: d.mac2, // 🚀 送出時封裝無線 MAC
+          mac2: d.mac2,
           ip: d.ip.trim(),
           deviceName: d.deviceName.trim().toUpperCase(),
-          remark: d.remark
+          // 🚀 自動封裝標籤與傳遞舊機 IP
+          remark: d.actionType === "舊換新" ? `[REPLACE] 汰換舊機IP: ${d.oldIp.trim()}。${d.remark}` : d.remark,
+          old_ip: d.actionType === "舊換新" ? d.oldIp.trim() : undefined
         };
       });
 
@@ -161,7 +171,7 @@ export default function InternalEntryPage() {
       if (res.success) {
         showToast(`成功批次直通入庫 ${payload.length} 筆設備！`, "success");
         setMetadata({ c01FormId: "", date: new Date().toISOString().split("T")[0], area: buildingOptions[0]?.棟別名稱 || "", floor: "", unit: "", applicantName: "", applicantExt: "" });
-        setDevices([{ deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "" }]);
+        setDevices([{ actionType: "新機", deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "", oldIp: "" }]);
       }
     } catch (err: any) {
       showToast(err.message, "error");
@@ -240,28 +250,53 @@ export default function InternalEntryPage() {
               <div className={`${styles.clinicalGlass} rounded-3xl p-6 md:p-8 shadow-sm flex flex-col flex-1`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 border-b border-slate-100 pb-4">
                    <div className="flex items-center gap-2"><span className={`material-symbols-outlined text-blue-600 ${styles.iconFill}`}>dns</span><h2 className="text-lg font-bold text-slate-800 tracking-tight">入庫設備節點清單</h2></div>
-                   <button onClick={() => setDevices([...devices, { deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "" }])} className="text-purple-600 font-black text-[10px] uppercase tracking-[0.2em] bg-purple-50 px-5 py-2.5 rounded-xl hover:bg-purple-100 transition-all border border-purple-100 shadow-sm">+ 新增設備</button>
+                   <button onClick={() => setDevices([...devices, { actionType: "新機", deviceType: "桌上型電腦", model: "", sn: "", mac1: "", mac2: "", ip: "", deviceName: "", remark: "", oldIp: "" }])} className="text-purple-600 font-black text-[10px] uppercase tracking-[0.2em] bg-purple-50 px-5 py-2.5 rounded-xl hover:bg-purple-100 transition-all border border-purple-100 shadow-sm">+ 新增設備</button>
                 </div>
 
                 <div className="flex flex-col gap-5 w-full">
                   {devices.map((d, i) => (
                     <div key={i} className={styles.deviceItemBlock}>
                       <div className={styles.rowGrid}>
+                        {/* 🚀 加入作業類型，套用廠商端的高亮視覺 */}
+                        <div className="col-span-1">
+                          <label className={styles.inputLabel}>作業類型</label>
+                          <select 
+                            value={d.actionType} 
+                            onChange={e => { const nd = [...devices]; nd[i].actionType = e.target.value as "新機"|"舊換新"; if (nd[i].actionType === '新機') nd[i].oldIp = ''; setDevices(nd); }} 
+                            className={`${styles.crystalInput} text-center tracking-widest text-[14px] font-black transition-all duration-300 ${d.actionType === '舊換新' ? 'bg-rose-100 border-rose-500 text-rose-800 shadow-inner' : 'bg-sky-100 border-sky-500 text-sky-800 shadow-inner'}`}
+                          >
+                            <option value="新機">新設機台</option>
+                            <option value="舊換新">舊換新 (汰換)</option>
+                          </select>
+                        </div>
                         <div><label className={styles.inputLabel}>設備類型</label><select value={d.deviceType} onChange={e => { const nd = [...devices]; nd[i].deviceType = e.target.value; setDevices(nd); }} className={styles.crystalInput}><option>桌上型電腦</option><option>筆記型電腦</option><option>印表機</option><option>醫療儀器</option><option>其他設備</option></select></div>
                         <div><label className={styles.inputLabel}>品牌型號</label><input value={d.model} onChange={e => { const nd = [...devices]; nd[i].model = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
-                        <div><label className={styles.inputLabel}>產品序號 (留空自動補)</label><input value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
                       </div>
                       
-                      {/* 🚀 物理修復：排版優化，加入有線與無線 MAC */}
                       <div className={styles.rowGrid}>
-                        <div><label className={styles.inputLabel}>配置 IP</label><input value={d.ip} onChange={e => { const nd = [...devices]; nd[i].ip = e.target.value; setDevices(nd); }} className={`${styles.crystalInput} font-mono text-emerald-600 border-emerald-200`} /></div>
+                        <div><label className={styles.inputLabel}>產品序號 (留空自動補)</label><input value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
                         <div><label className={styles.inputLabel}>有線 MAC</label><input value={d.mac1} onChange={e => handleMacInput(i, e.target.value, 'mac1')} className={`${styles.crystalInput} font-mono`} /></div>
                         <div><label className={styles.inputLabel}>無線 MAC</label><input value={d.mac2} onChange={e => handleMacInput(i, e.target.value, 'mac2')} className={`${styles.crystalInput} font-mono text-slate-400`} /></div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-1">
+                         <div><label className={styles.inputLabel}>新配置 IP</label><input value={d.ip} onChange={e => { const nd = [...devices]; nd[i].ip = e.target.value; setDevices(nd); }} className={`${styles.crystalInput} font-mono text-emerald-600 border-emerald-200`} /></div>
                          <div><label className={styles.inputLabel}>設備識別名稱</label><input value={d.deviceName} onChange={e => { const nd = [...devices]; nd[i].deviceName = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-blue-600 border-blue-200`} /></div>
-                         <div><label className={styles.inputLabel}>內部直通備註</label><input value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
+                      </div>
+
+                      {/* 🚀 動態展開舊換新專屬必填欄位 */}
+                      {d.actionType === '舊換新' && (
+                        <div className="w-full bg-red-50 p-4 rounded-xl border border-red-200 mt-1 animate-in fade-in zoom-in-95 duration-200">
+                           <label className={`${styles.inputLabel} text-red-800 flex items-center gap-1`}>
+                             <span className="material-symbols-outlined text-[14px]">warning</span> 請輸入欲汰換之舊設備 IP (必填)
+                           </label>
+                           <input placeholder="輸入舊機 IP，系統將於入庫時自動作廢該舊機..." value={d.oldIp} onChange={e => { const nd = [...devices]; nd[i].oldIp = e.target.value.trim(); setDevices(nd); }} className={`${styles.crystalInput} font-mono border-red-300 shadow-inner mt-1`} />
+                        </div>
+                      )}
+
+                      <div className="w-full mt-1">
+                         <label className={styles.inputLabel}>內部直通備註</label>
+                         <input value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} />
                       </div>
 
                       {devices.length > 1 && <button onClick={() => setDevices(devices.filter((_, idx) => idx !== i))} className={styles.removeBtn}><span className="material-symbols-outlined text-[14px]">close</span></button>}
@@ -271,7 +306,7 @@ export default function InternalEntryPage() {
 
                 <div className="mt-8 pt-6 border-t border-slate-100">
                    <button onClick={handleSubmit} disabled={isLoading} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase tracking-[0.3em] text-sm shadow-xl shadow-purple-900/20 hover:bg-purple-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3">
-                     {isLoading ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div><span>寫入資料庫中...</span></> : <><span className="material-symbols-outlined">bolt</span>強制直通結案</>}
+                     {isLoading ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div><span>寫入資料庫中...</span></> : <><span className="material-symbols-outlined">bolt</span>強制直通結案入庫</>}
                    </button>
                 </div>
               </div>
@@ -284,3 +319,4 @@ export default function InternalEntryPage() {
     </div>
   );
 }
+```eof
