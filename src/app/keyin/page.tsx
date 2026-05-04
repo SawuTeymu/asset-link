@@ -10,22 +10,24 @@ import styles from "./keyin.module.css";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.8 廠商日誌防護完整版 (設備名稱顯示優化)
+ * 狀態：V400.10 廠商日誌防護完整版 (舊換新邏輯改為 IP)
  * 職責：
- * 1. 🚀 UI 優化：在「進度查詢」中，若已核發設備名稱，則隱藏 SN 改為顯示「設備登錄名稱」。
- * 2. 日誌綁定：撤回申請改走 Server Action `withdrawVendorAsset`，強制寫入操作日誌。
- * 3. 帳號安全：偵測預設密碼登入時，物理鎖定其他作業選單，強制更新密碼。
+ * 1. 業務規則升級：舊換新作業改為強制填寫「舊機 IP」，更符合實務操作。
+ * 2. 自動標籤封裝：舊換新會自動產生 [REPLACE] 汰換舊機IP 標籤以對接後端。
+ * 3. 載入修正還原：被退回的案件能自動解析字串，精準還原舊機 IP 欄位。
+ * 4. 縮短 SN：採用 A + 月日(4碼) + 隨機(4碼) 精簡格式。
  * ==========================================
  */
 
 interface DeviceState {
+  actionType: "新機" | "舊換新";
   type: string;
   model: string;
   sn: string;
   mac: string;
   mac2: string;
   remark: string;
-  original_sn?: string;
+  oldIp: string;
 }
 
 export default function KeyinPage() {
@@ -42,7 +44,7 @@ export default function KeyinPage() {
   const [buildingOptions, setBuildings] = useState<any[]>([]);
 
   const [metadata, setMetadata] = useState({ date: new Date().toISOString().split("T")[0], area: "", floor: "", unit: "", applicantName: "", applicantExt: "" });
-  const [devices, setDevices] = useState<DeviceState[]>([{ type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }]);
+  const [devices, setDevices] = useState<DeviceState[]>([{ actionType: "新機", type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }]);
   const [pendingRecords, setPendingRecords] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" | "info" }[]>([]);
 
@@ -107,15 +109,23 @@ export default function KeyinPage() {
       return; 
     }
 
+    // 強制驗證：若為舊換新，必須輸入舊機 IP
+    for (let i = 0; i < devices.length; i++) {
+      if (devices[i].actionType === "舊換新" && !devices[i].oldIp.trim()) {
+        showToast(`第 ${i + 1} 項設備為「舊換新」，請務必填寫欲汰換的舊機 IP`, "error");
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       const processedDevices = devices.map(d => {
         let finalSn = d.sn.trim().toUpperCase();
         if (!finalSn) {
-          // 🚀 縮短 S/N：改為 A + 月日(4碼) + - + 隨機英數(4碼) = 總共 10 碼
+          // 縮短 S/N：改為 A + 月日(4碼) + 隨機英數(4碼) = 總共 10 碼
           const randomHex = Math.floor(Math.random() * 65535).toString(16).toUpperCase().padStart(4, '0');
-          const dateStr = metadata.date.replace(/-/g, '').substring(4); // 取得 MMDD
-          finalSn = `A${dateStr}-${randomHex}`; // 例如: A0504-1A2B
+          const dateStr = metadata.date.replace(/-/g, '').substring(4); 
+          finalSn = `A${dateStr}-${randomHex}`; 
         }
         return { ...d, sn: finalSn };
       });
@@ -132,15 +142,15 @@ export default function KeyinPage() {
         sn: d.sn,
         mac1: d.mac,
         mac2: d.mac2 || "",
-        remark: d.remark || "",
+        remark: d.actionType === "舊換新" ? `[REPLACE] 汰換舊機IP: ${d.oldIp}。${d.remark}` : d.remark,
         vendor: vendorName,
         status: "待核定",
-        original_sn: d.original_sn
+        old_ip: d.actionType === "舊換新" ? d.oldIp : undefined
       }));
 
       await submitAssetBatch(payload);
 
-      setDevices([{ type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }]);
+      setDevices([{ actionType: "新機", type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }]);
       showToast("預約錄入成功，已送交資訊中心", "success");
       setActiveTab("progress");
     } catch (err: any) {
@@ -171,6 +181,12 @@ export default function KeyinPage() {
       const { data, error } = await supabase.from("資產").select("*").eq("產品序號", sn).single();
       if (error) throw error;
       
+      const remarkStr = data.備註 || "";
+      const oldIpMatch = remarkStr.match(/\[REPLACE\] 汰換舊機IP: ([^。]+)。/);
+      const isReplace = !!oldIpMatch;
+      const parsedOldIp = oldIpMatch ? oldIpMatch[1] : "";
+      const cleanRemark = remarkStr.replace(/\[REPLACE\] 汰換舊機IP: [^。]+。/, "").trim();
+
       setMetadata({
         date: data.裝機日期,
         area: data.棟別,
@@ -181,13 +197,14 @@ export default function KeyinPage() {
       });
       
       setDevices([{
+        actionType: isReplace ? "舊換新" : "新機",
         type: data.設備類型 || "桌上型電腦",
         model: data.品牌型號 || "",
         sn: data.產品序號,
         mac: data.主要mac || "",
         mac2: data.無線mac || "",
-        remark: data.備註 || "",
-        original_sn: data.產品序號 
+        remark: cleanRemark,
+        oldIp: parsedOldIp
       }]);
       
       setActiveTab("entry");
@@ -350,22 +367,44 @@ export default function KeyinPage() {
                  <div className={`${styles.clinicalGlass} rounded-3xl p-6 md:p-8 shadow-sm flex flex-col flex-1`}>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 border-b border-slate-100 pb-4">
                        <div className="flex items-center gap-2"><span className={`material-symbols-outlined text-emerald-600 ${styles.iconFill}`}>dns</span><h2 className="text-lg font-bold text-slate-800 tracking-tight">設備詳細資訊</h2></div>
-                       <button onClick={() => setDevices([...devices, { type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "" }])} className="text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] bg-blue-50 px-5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-100 shadow-sm">+ 新增設備節點</button>
+                       <button onClick={() => setDevices([...devices, { actionType: "新機", type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }])} className="text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] bg-blue-50 px-5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-100 shadow-sm">+ 新增設備節點</button>
                     </div>
                     
                     <div className="flex flex-col gap-5 w-full">
                       {devices.map((d, i) => (
                         <div key={i} className={styles.deviceItemBlock}>
                           <div className={styles.rowGrid}>
+                            <div>
+                              <label className={styles.inputLabel}>作業類型</label>
+                              <select value={d.actionType} onChange={e => { const nd = [...devices]; nd[i].actionType = e.target.value as "新機"|"舊換新"; if (nd[i].actionType === '新機') nd[i].oldIp = ''; setDevices(nd); }} className={`${styles.crystalInput} ${d.actionType === '舊換新' ? 'bg-amber-50 border-amber-200 text-amber-800' : ''}`}>
+                                <option value="新機">新設機台</option>
+                                <option value="舊換新">舊換新 (汰換)</option>
+                              </select>
+                            </div>
                             <div><label className={styles.inputLabel}>設備類型</label><select value={d.type} onChange={e => { const nd = [...devices]; nd[i].type = e.target.value; setDevices(nd); }} className={styles.crystalInput}><option>桌上型電腦</option><option>筆記型電腦</option><option>印表機</option><option>醫療儀器</option><option>其他設備</option></select></div>
                             <div><label className={styles.inputLabel}>品牌型號</label><input placeholder="品牌型號" value={d.model} onChange={e => { const nd = [...devices]; nd[i].model = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
-                            <div><label className={styles.inputLabel}>產品序號 (S/N)</label><input placeholder="留空將自動產生" value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
                           </div>
+                          
                           <div className={styles.rowGrid}>
+                            <div><label className={styles.inputLabel}>新設備 S/N (留空自動產生)</label><input placeholder="留空將自動產生" value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
                             <div><label className={styles.inputLabel}>主要 MAC</label><input placeholder="有線 MAC" value={d.mac} onChange={e => handleMacInput(i, e.target.value, "mac")} className={`${styles.crystalInput} font-mono text-blue-600`} /></div>
                             <div><label className={styles.inputLabel}>無線 MAC (可選)</label><input placeholder="無線" value={d.mac2} onChange={e => handleMacInput(i, e.target.value, "mac2")} className={`${styles.crystalInput} font-mono text-slate-400`} /></div>
-                            <div><label className={styles.inputLabel}>設備備註</label><input placeholder="補充說明" value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
                           </div>
+
+                          {d.actionType === '舊換新' && (
+                            <div className="w-full bg-amber-50 p-4 rounded-xl border border-amber-200 mt-1 animate-in fade-in zoom-in-95 duration-200">
+                               <label className={`${styles.inputLabel} text-amber-800 flex items-center gap-1`}>
+                                 <span className="material-symbols-outlined text-[14px]">warning</span> 請輸入欲汰換之舊設備 IP (必填)
+                               </label>
+                               <input placeholder="輸入舊機 IP，系統將於新機核准時自動作廢該舊機..." value={d.oldIp} onChange={e => { const nd = [...devices]; nd[i].oldIp = e.target.value.trim(); setDevices(nd); }} className={`${styles.crystalInput} font-mono border-amber-300 shadow-inner mt-1`} />
+                            </div>
+                          )}
+
+                          <div className="w-full mt-1">
+                             <label className={styles.inputLabel}>設備備註</label>
+                             <input placeholder="補充說明" value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} />
+                          </div>
+
                           {devices.length > 1 && <button onClick={() => setDevices(devices.filter((_, idx) => idx !== i))} className={styles.removeBtn}><span className="material-symbols-outlined text-[14px]">close</span></button>}
                         </div>
                       ))}
@@ -392,7 +431,6 @@ export default function KeyinPage() {
                   <table className="w-full text-left min-w-[900px]">
                     <thead>
                       <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                        {/* 🚀 物理修復：將表格標題改為動態名稱 */}
                         <th className="pb-4 px-4 w-[200px]">設備登錄名稱</th>
                         <th className="pb-4 px-4">部署單位 / 棟別</th>
                         <th className="pb-4 px-4">設備參數 / IP狀態</th>
@@ -404,7 +442,6 @@ export default function KeyinPage() {
                       {pendingRecords.map((record, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/50 transition-all">
                           <td className="p-4 align-top">
-                            {/* 🚀 物理修復：如果有配發設備名稱，完全隱藏 S/N 序號，只顯示名稱 */}
                             {record.assignedName ? (
                               <span className="font-mono text-sm font-black text-blue-700">{record.assignedName}</span>
                             ) : (
@@ -453,7 +490,6 @@ export default function KeyinPage() {
                   {pendingRecords.map((record, idx) => (
                     <div key={idx} className={styles.deviceItemBlock}>
                       <div className="flex justify-between items-center border-b border-slate-200/60 pb-3 mb-3">
-                        {/* 🚀 物理修復：手機版卡片標題同理替換，隱藏 S/N */}
                         {record.assignedName ? (
                           <span className="font-mono text-base font-black text-blue-700">{record.assignedName}</span>
                         ) : (

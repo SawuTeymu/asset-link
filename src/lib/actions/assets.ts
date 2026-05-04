@@ -6,15 +6,16 @@ import { unstable_noStore as noStore } from "next/cache";
 /**
  * ==========================================
  * 檔案：src/lib/actions/assets.ts
- * 狀態：V400.11 內部直通批次升級版 + 全域操作日誌 (Logs)
+ * 狀態：V400.12 內部直通批次升級版 + 舊機 IP 汰換引擎
  * 職責：
- * 1. 🚀 內部直通升級：新增 submitInternalBatch 支援多設備陣列寫入與 C01 單號對接。
- * 2. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼 (123456)。
- * 3. 全域日誌：實作 systemLog，強制記錄廠商與管理員的所有增刪改查動作。
+ * 1. 🚀 舊換新邏輯升級：submitAssetBatch 改為接收 old_ip，並將歷史庫中的舊機自動標記為「汰換作廢」。
+ * 2. 內部直通升級：submitInternalBatch 支援多設備陣列寫入與 C01 單號對接。
+ * 3. 物理防護：嚴格檢查 vendors 狀態，並物理阻擋預設密碼 (123456)。
+ * 4. 全域日誌：實作 systemLog，強制記錄廠商與管理員的所有增刪改查動作。
  * ==========================================
  */
 
-// --- 🚀 0. 全域系統日誌寫入函式 (System Logger) ---
+// --- 0. 全域系統日誌寫入函式 (System Logger) ---
 export async function systemLog(operator: string, action: string) {
   try {
     await supabase.from("system_logs").insert([{ operator, action }]);
@@ -60,12 +61,12 @@ export async function checkIpConflict(ip: string) {
   return !!active;
 }
 
-// --- 🚀 3. 內部直通批次入庫 (支援多設備與 C01 表單號) ---
+// --- 3. 內部直通批次入庫 (支援多設備與 C01 表單號) ---
 export async function submitInternalBatch(batchData: any[]) {
   if (!batchData || batchData.length === 0) return { success: true };
 
   const insertData = batchData.map(d => ({
-    "結案單號": d.formId, // 寫入 C01 表單號
+    "結案單號": d.formId, 
     "裝機日期": d.date,
     "棟別": d.area,
     "樓層": d.floor,
@@ -217,15 +218,22 @@ export async function vendorConfirmAsset(sn: string) {
   return { success: true };
 }
 
-// --- 10. 批次提交預約 (含 Log) ---
+// --- 10. 批次提交預約 (含 Log & 舊機 IP 汰換引擎) ---
 export async function submitAssetBatch(batchData: any[]) {
   if (!batchData || batchData.length === 0) return { success: true };
 
   const vendorName = batchData[0].vendor || batchData[0].來源廠商;
   await verifyVendorAuth(vendorName);
 
+  // 🚀 物理替換：攔截舊換新作業，使用 old_ip 精準作廢舊機
   for (const d of batchData) {
-    if (d.original_sn) await supabase.from("資產").delete().eq("產品序號", d.original_sn);
+    if (d.old_ip) {
+      // 1. 若待核定區有卡住相同 IP 的異常資料，直接刪除釋放
+      await supabase.from("資產").delete().eq("核定ip", d.old_ip);
+      
+      // 2. 將歷史結案庫中，佔用此舊 IP 的設備狀態直接標記為「汰換作廢」
+      await supabase.from("historical_assets").update({ "狀態": "汰換作廢" }).eq("核定ip", d.old_ip);
+    }
   }
   
   const insertData = batchData.map(d => ({
