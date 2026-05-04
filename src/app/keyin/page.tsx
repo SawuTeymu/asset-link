@@ -10,18 +10,18 @@ import styles from "./keyin.module.css";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.10 廠商日誌防護完整版 (舊換新邏輯改為 IP)
+ * 狀態：V400.11 廠商日誌防護完整版 (優化介面體驗)
  * 職責：
  * 1. 業務規則升級：舊換新作業改為強制填寫「舊機 IP」，更符合實務操作。
- * 2. 自動標籤封裝：舊換新會自動產生 [REPLACE] 汰換舊機IP 標籤以對接後端。
- * 3. 載入修正還原：被退回的案件能自動解析字串，精準還原舊機 IP 欄位。
- * 4. 縮短 SN：採用 A + 月日(4碼) + 隨機(4碼) 精簡格式。
+ * 2. 介面優化：移除「設備類型」交由管理員判定；強化「作業類型」視覺警示；移除行政資料輸入框的提示字。
+ * 3. 自動標籤封裝：舊換新會自動產生 [REPLACE] 汰換舊機IP 標籤以對接後端。
+ * 4. 載入修正還原：被退回的案件能自動解析字串，精準還原舊機 IP 欄位。
+ * 5. 縮短 SN：採用 A + 月日(4碼) + 隨機(4碼) 精簡格式。
  * ==========================================
  */
 
 interface DeviceState {
   actionType: "新機" | "舊換新";
-  type: string;
   model: string;
   sn: string;
   mac: string;
@@ -44,7 +44,7 @@ export default function KeyinPage() {
   const [buildingOptions, setBuildings] = useState<any[]>([]);
 
   const [metadata, setMetadata] = useState({ date: new Date().toISOString().split("T")[0], area: "", floor: "", unit: "", applicantName: "", applicantExt: "" });
-  const [devices, setDevices] = useState<DeviceState[]>([{ actionType: "新機", type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }]);
+  const [devices, setDevices] = useState<DeviceState[]>([{ actionType: "新機", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }]);
   const [pendingRecords, setPendingRecords] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{ id: number; msg: string; type: "success" | "error" | "info" }[]>([]);
 
@@ -109,7 +109,6 @@ export default function KeyinPage() {
       return; 
     }
 
-    // 強制驗證：若為舊換新，必須輸入舊機 IP
     for (let i = 0; i < devices.length; i++) {
       if (devices[i].actionType === "舊換新" && !devices[i].oldIp.trim()) {
         showToast(`第 ${i + 1} 項設備為「舊換新」，請務必填寫欲汰換的舊機 IP`, "error");
@@ -122,7 +121,6 @@ export default function KeyinPage() {
       const processedDevices = devices.map(d => {
         let finalSn = d.sn.trim().toUpperCase();
         if (!finalSn) {
-          // 縮短 S/N：改為 A + 月日(4碼) + 隨機英數(4碼) = 總共 10 碼
           const randomHex = Math.floor(Math.random() * 65535).toString(16).toUpperCase().padStart(4, '0');
           const dateStr = metadata.date.replace(/-/g, '').substring(4); 
           finalSn = `A${dateStr}-${randomHex}`; 
@@ -150,7 +148,7 @@ export default function KeyinPage() {
 
       await submitAssetBatch(payload);
 
-      setDevices([{ actionType: "新機", type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }]);
+      setDevices([{ actionType: "新機", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }]);
       showToast("預約錄入成功，已送交資訊中心", "success");
       setActiveTab("progress");
     } catch (err: any) {
@@ -198,7 +196,6 @@ export default function KeyinPage() {
       
       setDevices([{
         actionType: isReplace ? "舊換新" : "新機",
-        type: data.設備類型 || "桌上型電腦",
         model: data.品牌型號 || "",
         sn: data.產品序號,
         mac: data.主要mac || "",
@@ -352,12 +349,12 @@ export default function KeyinPage() {
                      <div><label className={styles.inputLabel}>裝機日期</label><input type="date" value={metadata.date} onChange={e => setMetadata({...metadata, date: e.target.value})} className={styles.crystalInput} /></div>
                      <div className="grid grid-cols-2 gap-4">
                        <div><label className={styles.inputLabel}>所屬棟別</label><select value={metadata.area} onChange={e => setMetadata({...metadata, area: e.target.value})} className={styles.crystalInput}>{buildingOptions.map(v => <option key={v.棟別代碼} value={v.棟別名稱}>{v.棟別名稱}</option>)}</select></div>
-                       <div><label className={styles.inputLabel}>樓層</label><input type="text" value={metadata.floor} onChange={e => setMetadata({...metadata, floor: e.target.value.toUpperCase()})} placeholder="如: 05F" className={styles.crystalInput} /></div>
+                       <div><label className={styles.inputLabel}>樓層</label><input type="text" value={metadata.floor} onChange={e => setMetadata({...metadata, floor: e.target.value.toUpperCase()})} className={styles.crystalInput} /></div>
                      </div>
-                     <div><label className={styles.inputLabel}>單位全稱</label><input type="text" value={metadata.unit} onChange={e => setMetadata({...metadata, unit: e.target.value})} placeholder="如: 資訊組" className={styles.crystalInput} /></div>
+                     <div><label className={styles.inputLabel}>單位全稱</label><input type="text" value={metadata.unit} onChange={e => setMetadata({...metadata, unit: e.target.value})} className={styles.crystalInput} /></div>
                      <div className="grid grid-cols-2 gap-4">
-                       <div><label className={styles.inputLabel}>聯絡人姓名</label><input type="text" value={metadata.applicantName} onChange={e => setMetadata({...metadata, applicantName: e.target.value})} placeholder="如: 王小明" className={styles.crystalInput} /></div>
-                       <div><label className={styles.inputLabel}>分機號碼</label><input type="text" value={metadata.applicantExt} onChange={e => setMetadata({...metadata, applicantExt: e.target.value})} placeholder="如: 1234" className={styles.crystalInput} /></div>
+                       <div><label className={styles.inputLabel}>聯絡人姓名</label><input type="text" value={metadata.applicantName} onChange={e => setMetadata({...metadata, applicantName: e.target.value})} className={styles.crystalInput} /></div>
+                       <div><label className={styles.inputLabel}>分機號碼</label><input type="text" value={metadata.applicantExt} onChange={e => setMetadata({...metadata, applicantExt: e.target.value})} className={styles.crystalInput} /></div>
                      </div>
                   </div>
                 </div>
@@ -367,42 +364,45 @@ export default function KeyinPage() {
                  <div className={`${styles.clinicalGlass} rounded-3xl p-6 md:p-8 shadow-sm flex flex-col flex-1`}>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 border-b border-slate-100 pb-4">
                        <div className="flex items-center gap-2"><span className={`material-symbols-outlined text-emerald-600 ${styles.iconFill}`}>dns</span><h2 className="text-lg font-bold text-slate-800 tracking-tight">設備詳細資訊</h2></div>
-                       <button onClick={() => setDevices([...devices, { actionType: "新機", type: "桌上型電腦", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }])} className="text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] bg-blue-50 px-5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-100 shadow-sm">+ 新增設備節點</button>
+                       <button onClick={() => setDevices([...devices, { actionType: "新機", model: "", sn: "", mac: "", mac2: "", remark: "", oldIp: "" }])} className="text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] bg-blue-50 px-5 py-2.5 rounded-xl hover:bg-blue-100 transition-all border border-blue-100 shadow-sm">+ 新增設備節點</button>
                     </div>
                     
                     <div className="flex flex-col gap-5 w-full">
                       {devices.map((d, i) => (
                         <div key={i} className={styles.deviceItemBlock}>
                           <div className={styles.rowGrid}>
-                            <div>
+                            <div className="col-span-1">
                               <label className={styles.inputLabel}>作業類型</label>
-                              <select value={d.actionType} onChange={e => { const nd = [...devices]; nd[i].actionType = e.target.value as "新機"|"舊換新"; if (nd[i].actionType === '新機') nd[i].oldIp = ''; setDevices(nd); }} className={`${styles.crystalInput} ${d.actionType === '舊換新' ? 'bg-amber-50 border-amber-200 text-amber-800' : ''}`}>
+                              <select 
+                                value={d.actionType} 
+                                onChange={e => { const nd = [...devices]; nd[i].actionType = e.target.value as "新機"|"舊換新"; if (nd[i].actionType === '新機') nd[i].oldIp = ''; setDevices(nd); }} 
+                                className={`${styles.crystalInput} text-center tracking-widest text-[14px] font-black transition-all duration-300 ${d.actionType === '舊換新' ? 'bg-rose-100 border-rose-500 text-rose-800 shadow-inner' : 'bg-sky-100 border-sky-500 text-sky-800 shadow-inner'}`}
+                              >
                                 <option value="新機">新設機台</option>
                                 <option value="舊換新">舊換新 (汰換)</option>
                               </select>
                             </div>
-                            <div><label className={styles.inputLabel}>設備類型</label><select value={d.type} onChange={e => { const nd = [...devices]; nd[i].type = e.target.value; setDevices(nd); }} className={styles.crystalInput}><option>桌上型電腦</option><option>筆記型電腦</option><option>印表機</option><option>醫療儀器</option><option>其他設備</option></select></div>
-                            <div><label className={styles.inputLabel}>品牌型號</label><input placeholder="品牌型號" value={d.model} onChange={e => { const nd = [...devices]; nd[i].model = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
+                            <div className="col-span-1 sm:col-span-2"><label className={styles.inputLabel}>品牌型號</label><input value={d.model} onChange={e => { const nd = [...devices]; nd[i].model = e.target.value; setDevices(nd); }} className={styles.crystalInput} /></div>
                           </div>
                           
                           <div className={styles.rowGrid}>
                             <div><label className={styles.inputLabel}>新設備 S/N (留空自動產生)</label><input placeholder="留空將自動產生" value={d.sn} onChange={e => { const nd = [...devices]; nd[i].sn = e.target.value.toUpperCase(); setDevices(nd); }} className={`${styles.crystalInput} font-mono text-red-600`} /></div>
-                            <div><label className={styles.inputLabel}>主要 MAC</label><input placeholder="有線 MAC" value={d.mac} onChange={e => handleMacInput(i, e.target.value, "mac")} className={`${styles.crystalInput} font-mono text-blue-600`} /></div>
-                            <div><label className={styles.inputLabel}>無線 MAC (可選)</label><input placeholder="無線" value={d.mac2} onChange={e => handleMacInput(i, e.target.value, "mac2")} className={`${styles.crystalInput} font-mono text-slate-400`} /></div>
+                            <div><label className={styles.inputLabel}>主要 MAC</label><input value={d.mac} onChange={e => handleMacInput(i, e.target.value, "mac")} className={`${styles.crystalInput} font-mono text-blue-600`} /></div>
+                            <div><label className={styles.inputLabel}>無線 MAC (可選)</label><input value={d.mac2} onChange={e => handleMacInput(i, e.target.value, "mac2")} className={`${styles.crystalInput} font-mono text-slate-400`} /></div>
                           </div>
 
                           {d.actionType === '舊換新' && (
-                            <div className="w-full bg-amber-50 p-4 rounded-xl border border-amber-200 mt-1 animate-in fade-in zoom-in-95 duration-200">
-                               <label className={`${styles.inputLabel} text-amber-800 flex items-center gap-1`}>
+                            <div className="w-full bg-red-50 p-4 rounded-xl border border-red-200 mt-1 animate-in fade-in zoom-in-95 duration-200">
+                               <label className={`${styles.inputLabel} text-red-800 flex items-center gap-1`}>
                                  <span className="material-symbols-outlined text-[14px]">warning</span> 請輸入欲汰換之舊設備 IP (必填)
                                </label>
-                               <input placeholder="輸入舊機 IP，系統將於新機核准時自動作廢該舊機..." value={d.oldIp} onChange={e => { const nd = [...devices]; nd[i].oldIp = e.target.value.trim(); setDevices(nd); }} className={`${styles.crystalInput} font-mono border-amber-300 shadow-inner mt-1`} />
+                               <input placeholder="輸入舊機 IP，系統將於新機核准時自動作廢該舊機..." value={d.oldIp} onChange={e => { const nd = [...devices]; nd[i].oldIp = e.target.value.trim(); setDevices(nd); }} className={`${styles.crystalInput} font-mono border-red-300 shadow-inner mt-1`} />
                             </div>
                           )}
 
                           <div className="w-full mt-1">
                              <label className={styles.inputLabel}>設備備註</label>
-                             <input placeholder="補充說明" value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} />
+                             <input value={d.remark} onChange={e => { const nd = [...devices]; nd[i].remark = e.target.value; setDevices(nd); }} className={styles.crystalInput} />
                           </div>
 
                           {devices.length > 1 && <button onClick={() => setDevices(devices.filter((_, idx) => idx !== i))} className={styles.removeBtn}><span className="material-symbols-outlined text-[14px]">close</span></button>}
