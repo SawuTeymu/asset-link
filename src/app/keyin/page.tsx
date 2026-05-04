@@ -112,9 +112,10 @@ export default function KeyinPage() {
       const processedDevices = devices.map(d => {
         let finalSn = d.sn.trim().toUpperCase();
         if (!finalSn) {
-          const randomHex = Math.floor(Math.random() * 16777215).toString(16).toUpperCase().padStart(6, '0');
-          const dateStr = metadata.date.replace(/-/g, '');
-          finalSn = `AUTO-${dateStr}-${randomHex}`;
+          // 🚀 縮短 S/N：改為 A + 月日(4碼) + - + 隨機英數(4碼) = 總共 10 碼
+          const randomHex = Math.floor(Math.random() * 65535).toString(16).toUpperCase().padStart(4, '0');
+          const dateStr = metadata.date.replace(/-/g, '').substring(4); // 取得 MMDD
+          finalSn = `A${dateStr}-${randomHex}`; // 例如: A0504-1A2B
         }
         return { ...d, sn: finalSn };
       });
