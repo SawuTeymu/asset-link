@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-// 🚀 新增引入 withdrawVendorAsset 確保撤回動作有 Log
 import { getVendorProgress, vendorConfirmAsset, submitAssetBatch, withdrawVendorAsset } from "@/lib/actions/assets";
 import { updateVendorPassword } from "@/lib/actions/users";
 import styles from "./keyin.module.css";
@@ -11,10 +10,11 @@ import styles from "./keyin.module.css";
 /**
  * ==========================================
  * 檔案：src/app/keyin/page.tsx
- * 狀態：V400.7 廠商日誌防護完整版
+ * 狀態：V400.8 廠商日誌防護完整版 (設備名稱顯示優化)
  * 職責：
- * 1. 原有功能全保留 (預約錄入、狀態矩陣、手機卡片 RWD、密碼強制更新)。
- * 2. 🚀 日誌綁定：撤回申請改走 Server Action `withdrawVendorAsset`，強制寫入操作日誌。
+ * 1. 🚀 UI 優化：在「進度查詢」中，若已核發設備名稱，則隱藏 SN 改為顯示「設備登錄名稱」。
+ * 2. 日誌綁定：撤回申請改走 Server Action `withdrawVendorAsset`，強制寫入操作日誌。
+ * 3. 帳號安全：偵測預設密碼登入時，物理鎖定其他作業選單，強制更新密碼。
  * ==========================================
  */
 
@@ -150,7 +150,6 @@ export default function KeyinPage() {
     }
   };
 
-  // 🚀 將前端刪除改為呼叫後端 Server Action，確保觸發 System Log
   const handleDeletePending = async (sn: string) => {
     if (!confirm("確定要撤回此筆預約申請嗎？")) return;
     setIsLoading(true);
@@ -392,7 +391,8 @@ export default function KeyinPage() {
                   <table className="w-full text-left min-w-[900px]">
                     <thead>
                       <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                        <th className="pb-4 px-4">產品序號 (S/N)</th>
+                        {/* 🚀 物理修復：將表格標題改為動態名稱 */}
+                        <th className="pb-4 px-4 w-[200px]">設備登錄名稱</th>
                         <th className="pb-4 px-4">部署單位 / 棟別</th>
                         <th className="pb-4 px-4">設備參數 / IP狀態</th>
                         <th className="pb-4 px-4">案件狀態</th>
@@ -402,7 +402,14 @@ export default function KeyinPage() {
                     <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                       {pendingRecords.map((record, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/50 transition-all">
-                          <td className="p-4 font-mono text-xs text-slate-500 align-top">{record.sn}</td>
+                          <td className="p-4 align-top">
+                            {/* 🚀 物理修復：如果有配發設備名稱，完全隱藏 S/N 序號，只顯示名稱 */}
+                            {record.assignedName ? (
+                              <span className="font-mono text-sm font-black text-blue-700">{record.assignedName}</span>
+                            ) : (
+                              <span className="font-mono text-xs text-slate-500">S/N: {record.sn}</span>
+                            )}
+                          </td>
                           <td className="p-4 font-bold align-top">
                             <p className="text-slate-800">{record.unit}</p>
                             <p className="text-[10px] text-slate-400 font-normal uppercase mt-0.5">{record.area} | {record.floor} | {record.date}</p>
@@ -445,7 +452,12 @@ export default function KeyinPage() {
                   {pendingRecords.map((record, idx) => (
                     <div key={idx} className={styles.deviceItemBlock}>
                       <div className="flex justify-between items-center border-b border-slate-200/60 pb-3 mb-3">
-                        <span className="font-mono text-sm font-black text-slate-600">{record.sn}</span>
+                        {/* 🚀 物理修復：手機版卡片標題同理替換，隱藏 S/N */}
+                        {record.assignedName ? (
+                          <span className="font-mono text-base font-black text-blue-700">{record.assignedName}</span>
+                        ) : (
+                          <span className="font-mono text-sm font-black text-slate-400">S/N: {record.sn}</span>
+                        )}
                         <div>
                           {record.status === '待核定' && <span className="bg-amber-100 text-amber-700 text-[10px] px-3 py-1.5 rounded-full border border-amber-200 font-black uppercase tracking-widest shadow-sm">審核中</span>}
                           {record.status === '已退回(待修正)' && <span className="bg-red-100 text-red-700 text-[10px] px-3 py-1.5 rounded-full border border-red-200 font-black uppercase tracking-widest shadow-sm">已退回</span>}
